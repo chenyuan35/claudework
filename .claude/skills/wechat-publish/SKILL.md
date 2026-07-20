@@ -178,15 +178,15 @@ page.evaluate(() => {
     if (/^\.+$/.test(txt)) dotCount++;
     if (sections[i].querySelector('img')) imgIdx.push(i);
   }
-  const total = sections.length;
-  const imgPcts = imgIdx.map(idx => Math.round((idx / total) * 100));
+  const textOnly = total - imgIdx.length;
+  const imgPcts = imgIdx.map(idx => Math.round((idx / textOnly) * 100));
   
   return {
     pass: (
       /mmbiz/.test(getComputedStyle(document.querySelector('.js_cover_preview_new')).backgroundImage) &&  // 封面
       dotCount === 0 &&                                                                                 // 无点号段
       imgIdx.length === 3 &&                                                                            // 3 张图
-      imgPcts.every((p, i) => Math.abs(p - [25, 55, 82][i]) <= 5) &&                                   // 位置误差 ≤5%
+      imgPcts.every((p, i) => Math.abs(p - [25, 55, 82][i]) <= 5) &&                                   // 位置误差 ≤5% (基于正文段)
       (t.match(/[一二三四五六七八九十]+、/g) || []).length >= 4 && (t.match(/[一二三四五六七八九十]+、/g) || []).length <= 7  // 小标题
     )
   };

@@ -559,8 +559,8 @@ REGRESSION_SCRIPT = """
     if (/^\\.+$/.test(txt)) dotCount++;
     if (sections[i].querySelector('img')) imgIdx.push(i);
   }
-  const total = sections.length;
-  const imgPcts = imgIdx.map(idx => Math.round((idx / total) * 100));
+  const textTotal = total - imgIdx.length; // count only text paras
+  const imgPcts = imgIdx.map(idx => Math.round((idx / textTotal) * 100));
   const subtitles = (t.match(/[一二三四五六七八九十]+、/g) || []).length;
   const passes = [
     hasCover,                                       // 0: cover exists
