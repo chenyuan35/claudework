@@ -1,0 +1,49 @@
+{
+  "version": "1",
+  "current_state": "done",
+  "retry_count": 0,
+  "last_recovery": "save",
+  "history": [
+    "init",
+    "topic",
+    "write",
+    "qa_para",
+    "qa_ai",
+    "image_gen",
+    "dedup",
+    "cors",
+    "editor_open",
+    "title_author",
+    "image_upload",
+    "bake",
+    "validate",
+    "insert",
+    "visual_check",
+    "cover",
+    "final_verify",
+    "save",
+    "review",
+    "skill_fix",
+    "cleanup"
+  ],
+  "topic": "朋友圈社交圈",
+  "title": "",
+  "article_file": "C:\\Users\\59314\\claudework\\wechat_article_social_circle.txt",
+  "cdn_urls": [
+    "https://mmbiz.qpic.cn/sz_mmbiz_png/TEemy0nIxOZHy0ogFjyCbd1ItcSvHcbAaQdiaaLc9lVuI7ggiagtxbib2UBVXGRWTuEh0Q9QKMicT0dUibwYNHNofTA82ic7yvSKQLIR5iaZe6SAA8/0?wx_fmt=png",
+    "https://mmbiz.qpic.cn/sz_mmbiz_png/TEemy0nIxOa6zib7QfnKpQKuRGDc8VfypUwPkNpBpUaYPPGdKPWCAlKp1wgWSvnKDNRC5zTbr8hYTVy9nKlNQbq031DTfLUREGMichLK54EO0/0?wx_fmt=png",
+    "https://mmbiz.qpic.cn/mmbiz_png/TEemy0nIxObQx5O5qdf6qayibefRRScvWB8IrjrP5wQuVib2S9gxJTBlhM6icN1VkDJMINiblicXia4PyZibIElU1BcRD8A3r4pUuDCc9tez4z1DXI/0?wx_fmt=png"
+  ],
+  "draft_url": "",
+  "appmsgid": "100000311",
+  "token": "",
+  "created_at": "2026-07-21T00:12:34.559637",
+  "updated_at": "2026-07-21T00:20:06.529821",
+  "errors": [
+    "cover: failed after 2 retries",
+    "cover: WeChat Vue dialog incompatible with automation, set cover manually then publish"
+  ],
+  "logs": [],
+  "cors_port": 8768,
+  "cover_ok": false
+}
