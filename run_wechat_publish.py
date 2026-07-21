@@ -357,10 +357,17 @@ def step_auto_bake(state):
     if not af:
         log('no article file', 'ERROR')
         return False
-    cmd = f'python {escape_path(WORKDIR)}/bake_wechat_html.py {escape_path(af)}'
+    # Use list-based subprocess to avoid shell & escaping issues
+    bake_script = escape_path(WORKDIR) + '/bake_wechat_html.py'
+    cmd_list = ['python', bake_script, escape_path(af), '--auto-position']
     for url in cdn[:3]:
-        cmd += f' "{url}"'
-    rc, out, err = run(cmd)
+        cmd_list += ['--cdn', url]
+    try:
+        r = subprocess.run(cmd_list, capture_output=True, text=True, timeout=120, cwd=str(WORKDIR))
+        rc, out, err = r.returncode, r.stdout, r.stderr
+    except Exception as e:
+        log(f'bake exception: {e}', 'ERROR')
+        return False
     if rc != 0:
         log(f'bake FAIL: {out[:200]} {err[:200]}', 'ERROR')
         return False

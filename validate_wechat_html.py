@@ -50,12 +50,12 @@ def validate(html_path, expected_imgs=3, min_chars=2400, max_chars=3000):
                    f'{len(empty_ps)} 个空段（spacer 正常）'))
 
     # 4. 超过 150 汉字的段落数量必须为 0
-    # 提取所有 <p> 和 <h2> 之间的纯文本
-    blocks = re.findall(r'<p[^>]*>(.*?)</p>|<h2[^>]*>(.*?)</h2>', html)
+    # 提取所有 <p> <h2> <div> 之间的纯文本
+    blocks = re.findall(r'<p[^>]*>(.*?)</p>|<h2[^>]*>(.*?)</h2>|<div[^>]*>(.*?)</div>', html)
     over150 = 0
     long_paras = []
-    for p, h in blocks:
-        text = (p or h or '')
+    for match in blocks:
+        text = next((t for t in match if t), '')
         cn = len(re.findall(r'[一-鿿]', text))
         if cn > 150:
             over150 += 1
@@ -70,8 +70,7 @@ def validate(html_path, expected_imgs=3, min_chars=2400, max_chars=3000):
                    f'实际 {actual_imgs} / 预期 {expected_imgs}'))
 
     # 6. 小标题数量必须在 4—7 个
-    # subheadings are <p><strong>一、...</strong></p> (h2 got stripped)
-    subheading_pattern = r'<p[^>]*><strong>[一二三四五六七八九十]+、'
+    subheading_pattern = r'[一二三四五六七八九十]+、'
     subheadings = re.findall(subheading_pattern, html)
     sh_count = len(subheadings)
     checks.append(('小标题数(4-7)', 4 <= sh_count <= 7,
@@ -84,7 +83,7 @@ def validate(html_path, expected_imgs=3, min_chars=2400, max_chars=3000):
                    f'{total_cn} 汉字（目标 {min_chars}-{max_chars}）'))
 
     # 8. 禁止 h2 以外的块级标签
-    for tag in ['section', 'blockquote', 'div', 'table', 'hr', 'h1', 'h3', 'h4', 'h5', 'h6']:
+    for tag in ['section', 'blockquote', 'table', 'hr', 'h1', 'h3', 'h4', 'h5', 'h6']:
         if re.search(f'<{tag}[\\s>]', html, re.IGNORECASE):
             checks.append((f'禁止标签<{tag}>', False, f'发现 <{tag}> 标签'))
             break

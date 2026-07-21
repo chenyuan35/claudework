@@ -1,80 +1,42 @@
 #!/usr/bin/env python3
-"""bake_wechat_html.py — 谋生与人性 v6.5 多主题排版 + 行内标记 + 节分隔符
+"""bake_wechat_html.py — 极简排版 v8.0
 
 用法:
-  # 默认主题 (warm-life / 生活感悟)
-  python bake_wechat_html.py article.txt CDN1 CDN2 CDN3 [CDN4...]
+  python bake_wechat_html.py article.txt --cdn URL1 --cdn URL2 --cdn URL3
+  python bake_wechat_html.py article.txt --cdn URL1 --cdn URL2 --cdn URL3 --auto-position
 
-  # 指定主题
-  python bake_wechat_html.py article.txt CDN1 CDN2 CDN3 --theme clean-analysis
-
-  # 列出可用主题
-  python bake_wechat_html.py --list-themes
+排版规范：
+  正文 18px/2行高/黑色/左对齐/段距24px
+  小标题 22px/蓝色/居中/上下32px，格式" 一、标题 "
+  禁止大段文字、密集排版、连续空行、额外装饰
 
 行内标记（写作时可直接嵌入段落）：
-  **文本**    strong加粗（重点结论，一段最多1次）
-  ==文本==    strong加粗（高价值结论，取代黄底）
-  ++文本++    strong加粗（重要概念，取代蓝底）
-  ~~文本~~    划线效果（反讽/否定）
-  !!文本!!    红色强调（警告/反面案例）
-
-节分隔符：
-  单独一行 === 或 --- 或 *** → 渲染为 ··· 分隔 spacer
-
-容器语法（独立段落）：
-  【对话】      speaker: text → 对话气泡样式
+  **文本** / ==文本== / ++文本++  →  加粗
+  !!文本!!                           →  红色强调
+  ~~文本~~                           →  划线效果
 
 输出: article_final.html
 
-铁律: 仅 <p>+<img>+<span>；禁止 h2/section/blockquote/彩色盒子
-v6.5 — 行内标记（==黄底 ++蓝底 !!红字 ~~划线）+ 节分隔符 + 对话容器
+铁律: 仅 <div>+<p>+<img>；禁止 h2/section/blockquote/彩色盒子
+v8.0 — 极简排版：18px/2行高/黑色左对齐, 小标题22px蓝居中
 """
 
 import argparse, json, re, sys
 from pathlib import Path
 
 
-# ─── 主题定义 ────────────────────────────────────────────────
-# 每个主题 = {P, H, Q, SP, IMG} = 不同 CSS style
-# 改主题时必须同步改 SKILL.md §6.8.0 常量表
-
-THEMES = {
-    # 生活感悟（默认）
-    'warm-life': {
-        'P': 'font-size:16px;line-height:1.8;color:#3f3f3f;margin:0 0 14px;letter-spacing:0.3px;text-align:justify;',
-        'P_ALT': 'font-size:16.1px;line-height:1.8;color:#3f3f3f;margin:0 0 14px;letter-spacing:0.3px;text-align:justify;',
-    },
-    # 冷静分析
-    'clean-analysis': {
-        'P': 'font-size:15.5px;line-height:1.8;color:#3a3f4b;margin:0 0 14px;letter-spacing:0.3px;text-align:justify;',
-        'P_ALT': 'font-size:15.6px;line-height:1.8;color:#3a3f4b;margin:0 0 14px;letter-spacing:0.3px;text-align:justify;',
-    },
-    # 叙事人文
-    'story-telling': {
-        'P': 'font-size:16px;line-height:1.8;color:#3d3833;margin:0 0 14px;letter-spacing:0.4px;text-align:justify;',
-        'P_ALT': 'font-size:16.1px;line-height:1.8;color:#3d3833;margin:0 0 14px;letter-spacing:0.4px;text-align:justify;',
-    },
-}
-
 # ─── 行内标记渲染 ────────────────────────────────────────────
 
 INLINE_MARKERS = [
-    # (pattern, replacement) — 按序应用，注意先后
-    # **bold** → <strong>（标准粗体，一段最多1次）
     (r'\*\*([^*]+)\*\*', r'<strong>\1</strong>'),
-    # ==text== → <strong>（高价值结论，取消黄底改纯粗体）
     (r'==([^=]+)==', r'<strong>\1</strong>'),
-    # ++text++ → <strong>（重要概念，取消蓝底改纯粗体）
     (r'\+\+([^+]+)\+\+', r'<strong>\1</strong>'),
-    # !!text!! → 红色强调
     (r'!!([^!]+)!!', r'<span style="color:#c0392b;font-weight:700;">\1</span>'),
-    # ~~text~~ → 划线
     (r'~~([^~]+)~~', r'<span style="text-decoration:line-through;color:#999;">\1</span>'),
 ]
 
 
 def apply_inline_markers(text):
-    """在 HTML 转义后的文本上应用行内标记。"""
     result = text
     for pattern, replacement in INLINE_MARKERS:
         result = re.sub(pattern, replacement, result)
@@ -85,9 +47,39 @@ def html_escape(t):
     return t.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
-def bake(text, cdn_urls, theme='warm-life'):
-    """将源文本烘焙为微信兼容 HTML。"""
-    s = THEMES.get(theme, THEMES['warm-life'])
+def split_blocks(body):
+    """将正文拆分成句子级 block：每个完整句子一个 <div>。
+
+    保护块（图片占位、子标题、分隔符）保持整行；
+    正文按 。！？ 拆成句子。
+    """
+    body = body.replace('\r\n', '\n').replace('\r', '\n')
+    blocks = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r'^@@IMG:inline\d+@@$', line) or \
+           re.match(r'^[一二三四五六七八九十]+、', line) or \
+           re.match(r'^[=\-*]{3,}$', line):
+            blocks.append(line)
+            continue
+        blocks.extend(
+            x.strip() for x in
+            re.findall(r'.+?(?:[。！？][\'"]?|$)', line)
+            if x.strip()
+        )
+    return blocks
+
+
+def bake(text, cdn_urls, auto_position=False):
+    """将源文本烘焙为微信兼容 HTML。
+
+    统一排版规范：
+      正文 18px/2行高/黑色/左对齐/段距24px
+      小标题 22px/蓝色/居中/上下32px，格式" 一、标题 "
+      禁止大段文字、密集排版、连续空行、额外装饰
+    """
 
     # 替换图片占位符
     body = text
@@ -95,59 +87,58 @@ def bake(text, cdn_urls, theme='warm-life'):
         body = body.replace(f'[插图：{k}.jpg 插入此处]', f'@@IMG:{k}@@')
         body = body.replace(f'[插图：{k} 插入此处]', f'@@IMG:{k}@@')
 
+    blocks = split_blocks(body)
+
+    # ─── 自动算图位置（基于 split_blocks 的句子级 block 统计）───
+    if auto_position and cdn_urls:
+        blocks = [b for b in blocks if not re.fullmatch(r'@@IMG:inline\d+@@', b)]
+
+        text_pos = [
+            i for i, b in enumerate(blocks)
+            if not re.match(r'^[一二三四五六七八九十]+、', b)
+            and not re.match(r'^[=\-*]{3,}$', b)
+        ]
+
+        total = len(text_pos)
+        inserts = [
+            (round(total * 0.82), 'inline3'),
+            (round(total * 0.55), 'inline2'),
+            (round(total * 0.25), 'inline1'),
+        ]
+
+        for target, key in inserts:
+            if cdn_urls.get(key) and total:
+                pos = text_pos[min(max(target - 1, 0), total - 1)] + 1
+                blocks.insert(pos, f'@@IMG:{key}@@')
+                text_pos = [i if i < pos else i + 1 for i in text_pos]
+
     parts = []
-    para_idx = 0  # counter for style alternation (prevents WeChat editor merging)
-    for raw in [x.strip() for x in body.split('\n\n') if x.strip()]:
+    para_idx = 0
+    for raw in blocks:
         m = re.match(r'@@IMG:(inline\d+)@@', raw)
         if m:
             k = m.group(1)
             url = cdn_urls.get(k, '')
-            if not url:
-                parts.append(f'<p style="color:#999;font-size:14px;text-align:center;">[图片 {k}]</p>')
-                continue
-            parts.append(
-                f'<p style="margin:14px 0;text-align:center;">'
-                f'<img src="{url}" style="width:100%;display:block;border-radius:2px;"></p>'
-            )
-            continue
-        if raw.startswith('【金句】'):
-            t = raw.replace('【金句】', '', 1).strip()
-            t = html_escape(t)
-            t = apply_inline_markers(t)
-            parts.append(f'<p style="font-size:16px;line-height:1.8;color:#2c2c2c;font-weight:700;margin:18px 0 14px;text-align:justify;">{t}</p>')
+            if url:
+                parts.append(
+                    f'<p id="i{para_idx}" style="margin:28px 0;text-align:center;">'
+                    f'<img src="{url}" style="width:100%;display:block;border-radius:2px;"></p>'
+                )
+                para_idx += 1
             continue
         if re.match(r'^[一二三四五六七八九十]+、', raw):
-            t = html_escape(raw)
-            # subheading: p + strong instead of h2 (h2 gets stripped by editor)
-            parts.append(f'<p style="font-size:18px;line-height:1.6;color:#222;font-weight:700;margin:28px 0 14px;"><strong>{t}</strong></p>')
+            # 小标题：22px 蓝色居中，格式 " 一、标题 "
+            t = html_escape(raw.strip())
+            parts.append(f'<p id="h{para_idx}" style="font-size:22px;font-weight:700;color:#1677ff;text-align:center;margin:32px 0;">{t}</p>')
+            para_idx += 1
             continue
-        # 节分隔符 — 不输出任何内容（正文无点号/分隔段）
         if re.match(r'^[=\-*]{3,}$', raw):
+            # 节分隔符—跳过，间距由小标题上下 margin 控制
             continue
-        # 对话容器
-        if raw.startswith('【对话】'):
-            lines = raw.splitlines()
-            for line in lines:
-                line = line.strip()
-                if not line or line == '【对话】':
-                    continue
-                if '：' in line:
-                    speaker, _, content = line.partition('：')
-                    cs = html_escape(content.strip())
-                    parts.append(
-                        f'<p style="margin:0.4em 16px;padding:6px 12px;font-size:15px;line-height:1.7;'
-                        f'color:#3f3f3f;background:#f5f5f0;border-radius:6px;">'
-                        f'<span style="font-weight:700;color:#8b6914;">{speaker}：</span>{cs}</p>'
-                    )
-            continue
-        # 普通段落 - alternate P/P_ALT to prevent WeChat editor merging
+        # 正文段落：18px/2行高/段距24px，交替 margin 写法防 ProseMirror 合并
         t = html_escape(raw)
         t = apply_inline_markers(t)
-        if para_idx % 2 == 0:
-            style = s.get('P', '')
-        else:
-            style = s.get('P_ALT', s.get('P', ''))
-        parts.append(f'<p style="{style}">{t}</p>')
+        parts.append(f'<p id="p{para_idx}" style="font-size:18px;line-height:2;margin:0 0 24px;">{t}</p>')
         para_idx += 1
 
     return '\n'.join(parts)
@@ -169,20 +160,13 @@ def parse_frontmatter(text):
 def main():
     parser = argparse.ArgumentParser(description='公众号文章烘焙器')
     parser.add_argument('input', nargs='?', help='源文件（wechat_article_xxx.txt）')
-    parser.add_argument('cdn', nargs='*', help='CDN URL（最多 3 个，可省略做本地预览）')
-    parser.add_argument('--theme', '-t', default='warm-life', choices=list(THEMES.keys()),
-                        help=f'排版主题（默认 warm-life）')
-    parser.add_argument('--list-themes', action='store_true', help='列出可用主题')
+    parser.add_argument('--cdn', action='append', default=[], help='CDN URL（可传多次 --cdn URL）')
     parser.add_argument('--output', '-o', default='article_final.html', help='输出路径')
     parser.add_argument('--dry-run', action='store_true', help='只打印统计，不写文件')
+    parser.add_argument('--auto-position', action='store_true',
+                        help='自动算图：按25%/55%/82%均匀分布3张图片，忽略原文[插图]标记位置')
 
     args = parser.parse_args()
-
-    if args.list_themes:
-        print('可用主题:')
-        for k, v in THEMES.items():
-            print(f'  {k:20s} {v["name"]}')
-        return
 
     # 输入
     if args.input:
@@ -198,7 +182,6 @@ def main():
 
     # 尝试解析 frontmatter
     meta, body = parse_frontmatter(text)
-    theme = meta.get('theme', args.theme)
     title = meta.get('title', '')
 
     # 标题单独取（首行不是 frontmatter 时）
@@ -217,22 +200,22 @@ def main():
         cdn[f'inline{i+1}'] = url
 
     # 烘焙
-    html = bake(body, cdn, theme)
+    html = bake(body, cdn, auto_position=args.auto_position)
 
     if args.dry_run:
-        blocks = html.count('<p ')
+        blocks = html.count('<div ') + html.count('<p ')
         imgs = html.count('<img ')
         spans = html.count('<span')
-        print(f'主题: {theme} ({THEMES[theme]["name"]})')
         print(f'标题: {title[:50]}' if title else '标题: (首行)')
         print(f'blocks: {blocks}')
         print(f'spans(行内标记): {spans}')
         print(f'imgs: {imgs}')
         print(f'大小: {len(html)} bytes')
+        print(f'自动算图: {"是" if args.auto_position else "否"}')
         return
 
     Path(args.output).write_text(html, encoding='utf-8')
-    block_count = html.count('<p ') + html.count('<h2 ')
+    block_count = html.count('<div ') + html.count('<p ')
     print(f'OK blocks={block_count} imgs={html.count("<img ")} spans={html.count("<span")} -> {args.output}')
 
 
