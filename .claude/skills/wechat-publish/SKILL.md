@@ -54,7 +54,7 @@ done
 | 10 | image_upload | browser | 插图上传: 3张一次传完获取CDN | 2 | ✅ |
 | 11 | bake | auto | 烘焙: bake_wechat_html.py | 2 | |
 | 12 | validate | auto | 门禁: validate_wechat_html.py | 2 | ✅ |
-| 13 | insert | browser | 插入正文: 清空并逐块 insertHTML | 2 | ✅ |
+| 13 | insert | browser | 插入正文: fetch→清空→insertHTML | 2 | ✅ |
 | 14 | visual_check | browser | 视觉检查: 截图验证排版 | 2 | ✅ |
 | 15 | cover | browser | 封面: 上传并设置封面图 | 2 | ✅ |
 | 16 | final_verify | browser | 终极验证: DOM+CDN+表情+封面 | 2 | ✅ |
@@ -88,9 +88,6 @@ browser_navigate → https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit
 
 ### title_author — 填标题和作者
 
-**标题**：定位第一个 `.ProseMirror`，focus 后 `execCommand('insertText')` 填入标题
-**作者**：`input[placeholder="请输入作者"]` → value 设置为 "谋生与人性"
-
 ```javascript
 // 标题
 const pm0 = document.querySelectorAll('.ProseMirror')[0];
@@ -99,11 +96,7 @@ document.execCommand('selectAll');
 document.execCommand('insertText', false, '文章标题');
 
 // 作者
-const authorInput = document.querySelector('input[placeholder="请输入作者"]');
-const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-nativeSetter.call(authorInput, '谋生与人性');
-authorInput.dispatchEvent(new Event('input', { bubbles: true }));
-authorInput.dispatchEvent(new Event('change', { bubbles: true }));
+await page.locator('input[placeholder="请输入作者"]').fill('谋生与人性');
 ```
 
 ### image_upload — 上传 3 张正文图片
@@ -134,21 +127,13 @@ const cdnUrls = await page.evaluate(() => {
     .filter(src => src && src.startsWith('http'));
 });
 
-// Step 5: 保存 CDN URL 到 state
-// → 由 Claude 执行后，手动写入 session_state.json
-// cdn_urls 需存入 state，然后 python run_wechat_publish.py --complete
-
-// Step 6: 清空编辑器正文（图片占位在编辑器中，insert 步骤会重新插入）
-const bodyPM = document.querySelectorAll('.ProseMirror')[1];
-bodyPM.focus();
-document.execCommand('selectAll');
-document.execCommand('delete');
-```
+// Step 5: 写入 state → Claude 执行
+// 取 cdnUrls[0..2] 写入 session_state.json 的 cdn_urls 字段
+// 然后 python run_wechat_publish.py --complete
 
 ### insert — 插入正文
 
 ```javascript
-// 从 CORS 服务器获取 finalized HTML
 const resp = await fetch('http://127.0.0.1:8768/article_final.html');
 const html = await resp.text();
 
@@ -156,20 +141,13 @@ const bodyPM = document.querySelectorAll('.ProseMirror')[1];
 bodyPM.focus();
 document.execCommand('selectAll');
 document.execCommand('delete');
+// 一次性 insertHTML（id="pN" 阻止 ProseMirror 合并）
+document.execCommand('insertHTML', false, html);
 
-// 逐块 insertHTML（按段落拆分，避免一次性插入导致编辑器卡顿）
-const blocks = html.match(/<p[^>]*>.*?<\/p>|<img[^>]*>/g) || [];
-for (const block of blocks) {
-  document.execCommand('insertHTML', false, block);
-}
-
-// 验证：图片数 = 3
-const imgs = bodyPM.querySelectorAll('img');
-const withSrc = Array.from(imgs).filter(i => i.src).length;
-// withSrc 应为 3，否则重试
+// 验证
+const withSrc = Array.from(bodyPM.querySelectorAll('img')).filter(i => i.src).length;
+// withSrc !== 3 → 重试
 ```
-
-**⚠️ 注意**：不删除空 src 的 img 元素——它们是 ProseMirror 内部渲染占位，不影响发布。
 
 ### visual_check — 视觉检查
 
@@ -311,33 +289,19 @@ const historyCheck = await page.evaluate(() => {
 
 ## 排版管道（v8.0 — 极简固化）
 
-排版由 `bake_wechat_html.py` 完成，核心机制：
+排版由 `bake_wechat_html.py` 完成，三行 CSS 常量，三种块类型：
 
-### 1. `split_blocks()` 句子级拆分
-- 输入原文段落，按 `。！？` 拆成句子级 block
-- 保护块（`@@IMG:` / `一、xxx` / `===`）保持整行
+```
+split_blocks() → auto_position → 渲染 → 全文 = 三种 <p>
+  ↑按。！？拆句      ↑82%/55%/25%    ↑ body / sub / img
+```
+| 元素 | HTML | 关键 CSS |
+|------|------|----------|
+| 正文 | `<p id="p{N}">` | `font-size:18px;line-height:2;margin:0 0 24px;` |
+| 子标题 | `<p id="h{N}">` | `font-size:22px;font-weight:700;color:#1677ff;text-align:center;margin:32px 0;` |
+| 图片包裹 | `<p id="i{N}"><img>` | `margin:28px 0;text-align:center;` |
 
-### 2. `--auto-position` 自动算图
-- 基于 split_blocks 的 block 统计，按 82%/55%/25% 插图
-- 无 `total >= 6` 下限（文章再短也能插）
-
-### 3. `<p id="pN">` 防合并
-```
-正文:   <p id="p{N}" style="font-size:18px;line-height:2;margin:0 0 24px;">
-子标题: <p id="h{N}" style="font-size:22px;font-weight:700;color:#1677ff;text-align:center;margin:32px 0;">
-图片:   <p id="i{N}" style="margin:28px 0;text-align:center;"><img src="CDN">
-```
-ProseMirror 不合并 id 不同的 `<p>`，且 `<p>` 不会被套多层 `<section>`。
-
-### 4. 输出规格 `<p id="p/h/i{N}">`
-```
-正文:     <p id="p{N}" style="font-size:18px;line-height:2;margin:0 0 24px;">
-子标题:   <p id="h{N}" style="font-size:22px;font-weight:700;color:#1677ff;text-align:center;margin:32px 0;">
-图片包裹: <p id="i{N}" style="margin:28px 0;text-align:center;"><img src="CDN">
-```
-ProseMirror 不合并 `id` 不同的 `<p>`，且 `<p>` 不被套多层 `<section>`。
-只输出 `<p>`+`<img>`，禁止 h2/section/blockquote/div。
-通过 `validate_wechat_html.py` 8 项门禁，状态机用 `subprocess.run(list)` 调用。
+`<p id="p/h/i{N}">` 的 `id` 唯一（N 递增），ProseMirror 不合并不同 id 的 `<p>`，且 `<p>` 不被套多层 `<section>`。只输出 `<p>`+`<img>`，通过 8 项门禁。
 
 ---
 
@@ -358,7 +322,7 @@ pass=false → 回滚到上一个恢复点重新执行黄金路径。
 
 ## 质量门
 
-1. **段长闸**：`check_wechat_para.py` — 无段落超过 400 字
+1. **段长闸**：`check_wechat_para.py` — 无段落超 150 汉字，无连续短段（<20 汉字）
 2. **AI味闸**：`ai_score.py` ≤45 分
 3. **字数闸**：2400~3200 汉字
 4. **去重闸**：与已发表文章标题不重复
