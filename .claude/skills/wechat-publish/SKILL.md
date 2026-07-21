@@ -70,10 +70,11 @@ done
 
 ### dedup — 去重
 
-导航到已发表记录页，提取标题列表比对。
-
 ```javascript
-// 导航到发布列表页（token 从当前页面获取）
+// 首次执行需先登录 mp.weixin.qq.com，URL 中获取 token=XXXXXX
+// 提取 token 写入 state：
+//   python -c "import json;s=json.load(open('session_state.json'));s['token']='XXXXXX';json.dump(s,open('session_state.json','w'))"
+
 browser_navigate → https://mp.weixin.qq.com/cgi-bin/appmsgpublish?sub=list&begin=0&count=20&token={token}&lang=zh_CN
 // 从 snapshot 提取所有已发表文章的标题 → 与当前标题比对
 // 重复则熔断（通知用户主题重复），不重复则 → python run_wechat_publish.py --complete
@@ -151,7 +152,7 @@ const withSrc = Array.from(bodyPM.querySelectorAll('img')).filter(i => i.src).le
 
 ### visual_check — 视觉检查
 
-预览截图检查：开头段落正常、中间图片位置正确、结尾完整。用 `preview_screenshot` 截取。
+截图检查：开头段落正常、中间图片位置正确、结尾完整。用 `browser_take_screenshot` 截取 viewport。
 检查项：
 1. Markdown 残留（无 `#`、`*`、`---` 等原始符号）
 2. 段落堆积（连续空段 ≤2）
