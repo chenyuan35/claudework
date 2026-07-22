@@ -415,12 +415,12 @@ description: Blogger「WealthWiseDaily」个人理财博客全自动发布技能
 ```
 块            段数    累计  备
 Intro         7 段     7    痛点→发现→数据→场景
-4 × H3        7×4=28  35   每 H3 = 7 段（每段 35-45 词）
+4 × H3        7×4=28  35   每 H3 = 7 段（每段 30-35 词，保守估算）
 数字/拆解     5 段     40
 How-to        8 段     48   引导+5步
 结尾+3内链    4 段     52
 ```
-合计 **52 段 × 35-45 词 ≈ 2,050 词。** 写一段验一段，段内 2-3 句。目标区间 2000-2500 词。若首次落笔 <2000，在现有段落中扩展细节（数据引用、具体数字、自嘲）。若首次就 >2500，砍段落数最少的 H3 的前 2 段。
+合计 **52 段 × 30-35 词 ≈ 1,700-1,800 词（骨架保守值，填充后自然扩到 2,000+）。** 写一段验一段，段内 2-3 句。目标区间 2000-2500 词。若首次落笔 <2000，在现有段落中扩展细节（数据引用、具体数字、自嘲）。若首次就 >2500，砍段落数最少的 H3 的前 2 段。
 
 **执行铁律**：
 - 写之前先把上面骨架（含每个 H2/H3 的标题文字）落成注释/草稿，再填内容
@@ -490,17 +490,7 @@ No Pro Tip section. Closing = 1-2 sentences, must be challenge or comment CTA.
 - 整段只有 1 句可以——如果那句是强力定论或自嘲
 - **碎片句融合规则**：同一段落内若有多个 3-8 词的碎片句，用 em dash `—` 或逗号合并为单句。禁止将碎片句各自独立成句导致段落超 3 句。例：`"Same plane, same seat, same destination, same airline. Just a different departure time."` ✅（2 句）vs `"Same plane. Same seat. Same destination. Same airline."` ❌（4 句）
 - **🔥 碎片句不计入 3 句限额（2026-07-07）**：≤8 词的碎片句（如 "Dumb, right?" "In two weeks." "Total waste."）不占用本节的 3 句段落上限。理由是碎片句本质是同句语气停顿，非独立句。段落检查工具应忽略 ≤8 词的短段尾碎片句。此规则解决 §0a 规则 1（每 3-4 句插 1 个极短句）与本节段长规则之间的执行矛盾。
-- **🔥 [v5.7] 字数校验工具**：生成正文后，用 evaluate 扫描段落长度分布，不允许 4+ 句段落超过总段落的 10%。超过则回修。
-  ```javascript
-  // 字数校验工具（Step 3 质量门前执行）
-  const paras = document.querySelectorAll('article p, .post-body p');
-  const over3 = Array.from(paras).filter(p => {
-    const s = p.textContent.split(/[.!?]+/).filter(x => x.trim().length > 0);
-    return s.length > 3;
-  });
-  const ratio = over3.length / paras.length;
-  // ratio 应 < 0.10（10%），超过即需要拆分段落
-  ```
+- **段落长度分布检查**：生成正文后运行 `python scripts/verify_injection.py`，脚本自动排除 ≤8 词碎片句，统计完整句超 3 句的段落占比。若 <10% 则通过，否则拆分最长的段落。
 
 **破坏平行结构检查**：
 - 写完前 2 个 H3 后，检查开头句式是否雷同
@@ -661,7 +651,10 @@ python scripts/auto_blogger_images.py
 ---
 
 ### §4.3c 验证  
-由 `auto_blogger_images.py` 脚本内部自动完成：无 `images.unsplash.com`、`<img>` 标签数 ≥ 占位符数、存在 `agnes-ai.space` 域名。无需手动检查。
+
+图片层面由 `auto_blogger_images.py` 脚本内部自动完成：无 `images.unsplash.com`、`<img>` 标签数 ≥ 占位符数、存在 `agnes-ai.space` 域名。
+
+**Alt 文本质量检查**在 Step 3 质量门中由 `python scripts/verify_injection.py` 一并完成：检查每张 `<img>` 的 `alt` 属性是否覆盖 ≥ 2 层 prompt 要素（场景/风格/禁止元素）。不足 2 层者标记为警告。
 
 ---
 
@@ -721,7 +714,7 @@ Step 2d → **内容完整性校验**
 Step 3 → 质量门自检（§5 + §0a 规则 1-6）
   ├── §5a 基础质量门
   ├── §5b Anti-AI Voice 专项 7 项检查
-  ├── **段落长度分布检查**：evaluate 扫描，4+ 句段落不超过总段落的 10%；超过则拆分最长的段落
+  ├── **段落分布 + 图片 alt 质量**：`python scripts/verify_injection.py`（合并检查，原生碎片句排除）
   ├── 数据引用段逐句对照 §0a 对照表
   └── **§5a 第 9、10 条硬性阻断**（见下方 §5a）
 
@@ -743,15 +736,15 @@ Step 4 → 执行发布脚本（HTTP server + CORS fetch 注入，不使用 [ref
   │       若未跳转 → 重试 Step B
   └── Playwright 全自动发布
 
-Step 4a → **正文注入后内容抽样验证**
-  ├── 注入 CodeMirror 后，提取 `cm.getValue()` 的前 500 字符和后 500 字符
-  ├── 检查前 500 字符是否包含文章第一段的关键标志词（如 "kitchen"、"receipt" 等——每次按实际内容微调）
-  ├── 检查后 500 字符是否包含结尾段落标志词
-  │   ⚠️ "Drop a comment" 不一定在最后 500 字符（CTA 可能在 "How to Run" 等扩展章节前）。
-  │   ✅ 用内链 URL 锚定（`nerdwallet.com` / `thepennyhoarder.com`）
-  │   ✅ 次选结尾闭合标签 `</p>` 附近的关键 URL 参数
-  ├── 若前后端缺失，视为内容截断，**熔断**：禁止点击发布/更新，必须重新注入
-  └── ⚠️ H3 标签数检查不足以发现段落截断（2026-07-08 第 17 篇暴露：H3 全在但 H3 #1 的 4 个段落全部丢失，因 base64 分块边界数据损坏）
+Step 4a → **注入验证：`python scripts/verify_injection.py`**
+  ├── 注入 CodeMirror 后，提取 `cm.getValue()` 的完整内容写入临时文件
+  ├── 运行 `python scripts/verify_injection.py <tmp.html>` 自动检查三项：
+  │   ├── **内容完整性**：正文 <p> ≥ 5 段、开头正文词数 ≥ 50、CTA 存在、内链 ≥ 2
+  │   ├── **段落分布**：完整句超 3 句的段落占比 < 10%（排除 ≤8 词碎片句）
+  │   └── **图片检查**：图片 ≥ 3、无占位图、alt 文本覆盖 ≥ 2 层 prompt 要素
+  ├── 三项全通过 → 进入发布
+  ├── 任一项失败 → **熔断**：打印失败原因，禁止点击发布/更新，必须修复后重新注入
+  └── ⚠️ 本验证替代了旧版 `cm.getValue()` 前/后 500 字符关键字检查（后者因 HTML 注释 + img 标签偏移导致假阴性），不再依赖具体关键词匹配。
 
 Step 5 → 验证发布结果
   ├── 检查博文列表确认状态（URL 含 /blog/posts/）
@@ -858,7 +851,7 @@ const result = await page.evaluate(async () => {
 - **注入后杀掉服务器**：发布完成后用 `taskkill /f /pid <PID>` 杀掉特定进程（PID 从 Bash run_in_background 返回值获取），不要用 `taskkill /f /im python.exe`（会杀掉所有 python 进程）
 - **端口冲突处理**：如果 fetch 失败（如端口冲突、CSP 阻挡），更换端口后重试
 
-**验证**：注入后执行 Step 4a 内容抽样验证，抽取 `cm.getValue()` 的前 500 和后 500 字符检查关键标志词。
+**验证**：注入后执行 `python scripts/verify_injection.py` 三项验证（内容完整性/段落分布/图片质量），通过后进入发布。
 
 ### ⚠️ 废弃方案（不删除，仅做对照参考）
 
@@ -908,7 +901,7 @@ await page.evaluate(() => {
 7. 字数 < 2000 词：在任何阶段发现正文词数不足 2000，熔断停止，不得进入「更新」/「发布」操作
 8. H3 数量 < 标题承诺数字：标题说"4 Moves"但正文 H3 < 4，熔断，停止执行
 9. 修复类操作必须重走全部质量门：如果是对已发布文章的修复（非从头生成），也必须执行 §5 全部自检 + Step 2d 内容完整性校验，禁止"这是修复不用检查字数/H3"
-10. Step 4a 内容抽样验证不通过：注入后检查前后端关键标志词发现内容截断——熔断，禁止点击发布/更新，必须重新注入
+10. `python scripts/verify_injection.py` 未通过（内容完整性/段落分布/图片检查任一项失败）——熔断，禁止点击发布/更新，必须重新注入
 11. 发布后逐 H3 段落验证不通过：任意 H3 的专属关键词在文章 `innerHTML` 中缺失（如 "Switched Stores" H3 无 "Aldi"、"Freezer" H3 无 "freezer" 等）——熔断，回退编辑器修复
 12. 标题前 40 字符不含数字或行动动词：标题前 40 字符必须含数字（如 "6 Cards", "$285"）或行动动词（如 "Reviewed", "Canceled", "Built"）。不含则熔断，重新选题/改写标题
 
@@ -919,7 +912,7 @@ await page.evaluate(() => {
 1. **立即回编辑器**：导航到 `https://www.blogger.com/blog/post/edit/{blogID}/{postID}`（URL 可从发布页面的博文列表获得）
 2. **从本地 HTML 文件重新注入**：`cat blogger_article.html` 确认本地文件包含完整内容
 3. 按 §6 方案 A（HTTP server + CORS fetch）重新注入
-4. **执行 Step 4a 内容抽样验证**：验证前后端关键文本完整
+4. **运行 `python scripts/verify_injection.py`**：验证前后端内容完整
 5. **点击「更新」按钮**（非「发布」— 因为是已发布文章的修复）
 6. **重新执行 Step 5 所有验证**含逐 H3 段落内容验证
 
@@ -934,7 +927,7 @@ await page.evaluate(() => {
 |------|--------|--------|
 | "新建博文"按钮 | `querySelectorAll('div[role="button"], button')` 遍历 textContent 含"新建博文" | 是 `<div role="button">`，非 `<button>`。含图标字符，不依赖 getByRole |
 | 标题输入 | `input[aria-label="标题"]` | 获取后 `.value = title` + `dispatchEvent(new Event('input'))` |
-| 正文注入 | 启动 CORS HTTP server（localhost:8890）→ `fetch()` 获取 HTML → `cm.setValue(html)` | 🔥 零分块零数据损坏；❌ 注入后立即做 Step 4a 内容抽样验证 |
+| 正文注入 | 启动 CORS HTTP server（localhost:8890）→ `fetch()` 获取 HTML → `cm.setValue(html)` | 🔥 零分块零数据损坏；❌ 注入后运行 `python scripts/verify_injection.py` |
 | "发布"/"更新"按钮 | `querySelectorAll('button, div[role="button"]')` 遍历 textContent 含"发布"/"更新" | 都是 `<div role="button">`。`disabled` 属性检查 + `aria-disabled` 检查。无 disabled 时 textContent 含图标字符。必须排除"发布时间"（`!txt.includes('时间')`）|
 | 标签输入 | `querySelectorAll('textarea[aria-label]')` 遍历 aria-label 含"标签"/"逗号"/"Label" | 是 `<textarea>`，非 `<input>`。设置 `value` + dispatch input/change |
 | 确认对话框按钮 | evaluate 遍历 `querySelectorAll('div[role="button"]')`，取 textContent.trim() === '确认' 且 `offsetParent !== null` → click | 🔥 对话框按钮是 `<div role="button">`，不是 `<button>`。querySelectorAll('button') 无法匹配。<br>⚠️ 必须检查 `offsetParent`（可见性），页面中可能有两个 textContent===`确认` 的 div（对话框内一个可见 + 页面底部一个隐藏）。用 `browser_wait_for 3s` 等待 dialog 渲染再操作。 |
