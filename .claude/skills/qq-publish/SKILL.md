@@ -163,6 +163,11 @@ python generate_image.py "<prompt>" cover.jpg 1024x1024
 
 每张 prompt 从正文对应 h2 提取主体，B风格/C光线/D氛围三项中相邻图片至少两项不同。禁止只换文件名而复用同图。
 
+**prompt 提取公式**：人物/主体 + 动作 + 场景 + 关键物件 + 情绪 + 时代/视觉冲突
+从区块正文提取具体词汇：人名、地名、物品名、动作描述、情绪关键词。
+
+Agnes API key 已硬编码在 `generate_image.py` 中，无需 settings.json。直接运行：
+
 ```
 python generate_image.py "<IMG1 prompt>" body-1.jpg 1792x1024
 python generate_image.py "<IMG2 prompt>" body-2.jpg 1792x1024
@@ -300,4 +305,104 @@ function skillMarkdownIntegrity(markdown, previousLineCount) {
 | CORS 端口 | 8768（claudework 根目录） |
 | Python http.server | §5 代码，需 CORS header |
 | Test server 端口 | 8769（qq-publish 技能目录） |
+
+## PHASE 3：图片四模块（硬化 SOP，不可跳过，2026-07-25 新增）
+
+本节固化为 4 个模块依次执行。不可跳过、不可合并、不可"顺带完成"。每个模块输出指定产物，缺一项即 FAIL。
+
+### 模块 1：正文区块提取（SOP-IMG-01）
+
+**输入**：当前编辑器 ProseMirror 正文文本（已通过质量门 ≥ 3000 汉字、≥ 6 个 h2）
+
+**执行**：
+1. 从 `.ProseMirror.textContent` 读取全文
+2. 按标题关键词找出全部 6 个 h2 区块（见账号信息标题列表）
+3. 用 `totalHan * 0.25 / 0.50 / 0.75` 计算目标汉字位置
+4. 找到对应区块：按累计汉字数映射到具体 h2
+5. 取该区块前 3 段完整段落文本
+
+**输出**（3 项，缺一项即 FAIL）：
+```json
+[
+  {"img":"IMG1","h2":"标题","secHan":504,"textSample":"当年玩《魔兽世界》打熔火之心，四十个人没一个掉线的..."},
+  {"img":"IMG2","h2":"标题","secHan":537,"textSample":"在游戏里聊理想、聊工作、聊人生困惑，但从来没问过对方真名叫什么..."},
+  {"img":"IMG3","h2":"标题","secHan":561,"textSample":"剩下的名字就像一座数字墓园，记录着那些年你一起玩过游戏但已经走散了的人..."}
+]
+```
+
+**验收**：3 个区块的 title、secHan、textSample 均已输出，每个 secHan ≠ 0。
+
+### 模块 2：scene_prompt 生成（SOP-IMG-02）
+
+**输入**：模块 1 输出的 3 个区块信息
+
+**规则**（硬性，违反即 FAIL）：
+1. 每张图的 prompt = 人物/主体 + 动作 + 场景 + 关键物件 + 情绪 + 时代/视觉冲突
+2. 从区块正文提取具体词汇：人名、地名、物品名、动作描述、情绪关键词
+3. 相邻两张图的 B风格/C光线/D氛围三项至少 2 项不同
+4. 禁止随机通用游戏图、禁止只靠标题生成
+5. 每张图 prompt 长度 ≥ 15 个英文关键词或用中文逗号分隔的 ≥ 6 个短语
+
+**示例**（不允许逐字复用，仅展示格式）：
+- `40玩家大战拉格纳罗斯熔火之心副本，战士坦克开盾墙牧师战复，凌晨三点灭团语音怒吼，魔兽世界风格，电影级光线，紧张战斗氛围，4K，高度细节`
+- `最终幻想14风格，两个游戏角色在月光下的草地上并肩而坐，遥远幻想城市天际线，温暖月光，平静温馨氛围，动漫风格，4K，高度细节，杰作`
+- `Steam好友列表显示大部分头像已变灰离线，只有几个绿色在线，电脑屏幕微蓝光照在空荡桌面上，数字墓园氛围，伤感怀旧，写实摄影风格，电影级光线，4K，高度细节`
+
+**输出**：3 个 prompt 字符串，每行对应 IMG1/IMG2/IMG3。
+
+### 模块 3：3 图上传拿 CDN（SOP-IMG-03）
+
+**前置**：CORS 服务已启动（§5），模块 2 的 3 个 prompt 已就绪。
+
+**图片生成**：
+```
+python generate_image.py "<IMG1 prompt>" body-1.jpg 1792x1024
+python generate_image.py "<IMG2 prompt>" body-2.jpg 1792x1024
+python generate_image.py "<IMG3 prompt>" body-3.jpg 1792x1024
+```
+Agnes API key 已硬编码在 `generate_image.py` 中，无需额外配置。
+验收：3 个文件均存在、每个 > 10KB、SHA256 三者不同。
+
+**上传取 CDN**：
+对每张图，通过编辑器"插入图片"→"本地上传"→ Playwright fileChooser 原生上传：
+1. 点击 `[data-toolbar-item-of="imagePlugin"]` 打开对话框
+2. 点击 `.omui-upload-image-trigger` 触发 file chooser
+3. `browser_file_upload` 设置文件路径
+4. 等待上传完成 → 点击 `button:text-is("确认")`
+5. 记录插入到 ProseMirror 中的 img src（`inews.gtimg.com/om_bt/.../641` 格式）
+
+**输出**（3 项，缺一项即 FAIL）：
+```json
+{"cdn_srcs":["inews.gtimg.com/om_bt/AAAA/641","inews.gtimg.com/om_bt/BBBB/641","inews.gtimg.com/om_bt/CCCC/641"]}
+```
+验收：3 个 src 不同、全部以 `inews.gtimg.com` 开头、全部 `naturalWidth > 0`。
+
+### 模块 4：按渲染坐标插图并复验（SOP-IMG-04）
+
+**输入**：正文 HTML + 3 个 CDN src
+
+**前置条件**：qq_image_ops.js 已注入页面（`window.qqImageOps` 可用），qq_quality_gates.js 已注入（`window.qqGates` 可用）。
+
+**执行步骤**：
+
+1. 从 ProseMirror 提取正文文本
+2. 离线构建含 `__BODY_IMG_1/2/3` 占位符的 HTML（`data-body-img` + `data-lock-h2` 属性）
+3. 调用 `bindBodyImageSources(html, cdn_srcs, [2,4,5])` 替换占位符
+4. 调用 `optimizeBodyImagePositions(pm, html, {targets:{1:0.25,2:0.50,3:0.75}, rounds:3})`
+5. 将优化后的 HTML 通过 `execCommand('insertHTML')` 单次整段插入
+6. 调用 `liveImageGate(pm, 0.05)` 复验
+
+**验收输出**（全部必填，缺一项即 FAIL）：
+```
+3 个不同 CDN src: [src1, src2, src3]
+3 张图 naturalWidth: [w1, w2, w3] (全部 > 0)
+3 个实际 ratio:
+  IMG1 target=0.25 actual=X.XXX error=±0.0XX
+  IMG2 target=0.50 actual=X.XXX error=±0.0XX
+  IMG3 target=0.75 actual=X.XXX error=±0.0XX
+每张图前后段落文本（prev/next 各前 50 字）
+最大误差 ≤ 0.05: PASS/FAIL
+```
+
+**失败处理**：任一 ratio 误差 > 0.05 → 调整 `data-lock-h2` 锁定值重新执行步骤 2-5，最多 2 轮。2 轮仍 FAIL 则记录不动，不阻止发布。
 
