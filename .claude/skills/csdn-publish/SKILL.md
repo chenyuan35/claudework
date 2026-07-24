@@ -11,7 +11,7 @@ description: CSDN「deepseek23」文章发布技能。主管道：选题前准�
 |------|------|---------|---------|
 | **I 选题** | ①清工作区→②额度检查→③扫已有文章→④热点头条→⑤选话题去重→⑥预算配置 | ≤3min | 额度用完/无合适选题/标题重复 |
 | **II 生图** | ⑦写分析文件→⑧后台启动 _csdn_gen_img.py（不阻塞） | ~0s（并行） | 双图缺失且重试仍失败→A2熔断 |
-| **III 写作** | ⑨写正文 HTML（与生图并行）→⑩插入 `__BODY_IMG_PLACEHOLDER__` | 50-120s | 正文纯文本<5000→重写整篇（不追加） |
+| **III 写作** | ⑨写正文 HTML（与生图并行）→⑩插入 `__BODY_IMG_PLACEHOLDER__` | 50-120s | 正文纯文本<5000→追加到字符数最低的章节，不重写全篇 |
 | **IV 注入** | ⑪navigate编辑器→⑫填标题→⑬setData正文→⑭CDN上传→⑮proxy清理→⑯封面设置→⑰标签→⑱摘要 | ≤5min | §5 坐标表任一验收不通过 |
 | **V 发布** | ⑲§3 红线自查→⑳dispatchEvent 发布博客 | ≤30s | §3 任一不通过 |
 
@@ -142,7 +142,8 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:18991/_csdn_cover_small.
    - 破题段 400-600 字 → 主体每节 600-1200 字 → 结尾 300-500 字
    - 写完每节立即 `python -c "import re;t=re.sub(r'<[^>]+>','',open('article_csdn.html',encoding='utf-8').read());t=re.sub(r'\s+','',t);print(len(t))"`，不足则本节内补
 3. 插入 `__BODY_IMG_PLACEHOLDER__` 并执行 35%-60% 位置检测
-4. 终验：纯文本 ≥ 5000。不够 → **整篇删掉重写开头，不在末尾追加段落**
+4. 终验：纯文本 ≥ 目标字数（取自步骤⑥预算）。不够→只向字符数最低的章节追加内容，禁止重写已有正文
+5. **编辑审稿门（字数达标后执行）**：通读全文检查逻辑通顺性和段落衔接。检查重点：段间过渡自然度、观点连贯性、表述清晰度、有无逻辑断裂。发现问题→只修改对应章节内容，禁止整篇重写。编辑期间总字数允许在目标值 ±10% 范围内浮动。修改完成后进入 §1b。
 
 ---
 
@@ -205,6 +206,9 @@ navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEd
 | 7 | 原图 >1MB 上传超慢 | PIL resize + q=60 压缩到 <100KB 再上传 | 7.08 |
 | 8 | 编辑器 SPA 崩溃（操作超 30 次）| 操作计数上限 30 次；页面死亡则放弃 | 7.17 |
 | 9 | 发布按钮 Vue 不响应 | `removeAttribute('aria-disabled')` + `dispatchEvent(MouseEvent('click'))`，不用 browser_click | 7.24 |
+| 10 | CDN 上传弹窗按钮为"选择图片"而非"从本地上传" | Click "选择图片" → browser_file_upload → 确认裁剪(.vicp-operate-btn) → 从 getData 取 CDN URL → strip img 后替换占位符 | 7.24 |
+| 11 | AI 提取摘要返回"无法回答" | 取消弹窗后用 browser_fill_form 手动写入摘要，目标 textarea[placeholder*="摘要"] | 7.24 |
+| 12 | 摘要过长会覆盖标题框 | 设摘要后必须验证标题框 #txtTitle 的 value 正确 | 7.24 |
 
 ---
 
@@ -225,16 +229,19 @@ navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEd
 | 10 | 提取摘要 | `browser_click` → `target: "text=AI提取摘要"` → wait 4s → 验证 textarea | 摘要 textarea.value.length ≥ 200（若为0则手写） |
 | 11 | **发布博客** | `() => { const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='发布博客'); if(!b) return 'not_found'; b.removeAttribute('aria-disabled'); b.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})); return 'ok'; }` | URL 含 /creation/success/ |
 
-### §2b — CDN 上传详细步骤
+### §2b — CDN 上传详细步骤（2026-07-24 验证）
 
 | 序号 | 操作 | 工具 | 命令 |
 |------|------|------|------|
-| ① | execImageUpload 打开弹窗 | browser_evaluate | `function: "() => { CKEDITOR.instances.editor.execCommand('execImageUpload'); return 'opened'; }"` |
-|   | ⏳ 等"从本地上传"可见 | browser_wait_for | `text: "从本地上传", timeout: 10000` |
-| ② | 注入压缩图到文件选择器 | browser_run_code_unsafe | `async (page) => { const input = page.locator('input[type=\"file\"]').first(); await input.setInputFiles('_csdn_body_small.jpg'); }` |
-|   | ⏳ 等 CDN 上传 | browser_wait_for | `time: 10` |
-| ③ | 关弹窗 + 提取 CDN URL | browser_evaluate | `function: "() => { document.querySelectorAll('#pane-upimg,.cke_dialog_background_cover,.el-overlay').forEach(el=>el.remove()); const h=CKEDITOR.instances.editor.getData(); const m=h.match(/i-blog\\.csdnimg\\.cn\\/direct\\/[^\"']+/); return m ? 'https://'+m[0] : null; }"` |
-| ④ | 替换占位符 + 验证 | browser_evaluate | `function: "() => { const cdn='CDN_URL'; let h=CKEDITOR.instances.editor.getData(); h=h.replace(/<img[^>]*src=\"[^\"]*\"[^>]*\\/?>/gi,''); h=h.replace('__BODY_IMG_PLACEHOLDER__','<img src=\"'+cdn+'\" style=\"width:100%;max-width:800px;border:1px solid #e0e0e0;border-radius:8px;\" />'); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); const ic=(CKEDITOR.instances.editor.getData().match(/<img/gi)||[]).length; return ic===1 ? 'OK' : 'FAIL:'+ic; }"` |
+| ① | execImageUpload 打开弹窗 | browser_evaluate | `function: "() => { CKEDITOR.instances.editor.execCommand('execImageUpload'); }"` |
+| ② | 点"选择图片"打开文件选择器 | browser_click | `target: "text=选择图片"` |
+| ③ | 选择压缩图（弹窗变为 file chooser） | browser_file_upload | `paths: ["_csdn_body_small.jpg"]` |
+| ④ | 等裁剪界面出现 | browser_wait_for | `time: 3` |
+| ⑤ | 确认裁剪上传 | browser_evaluate | `function: "() => { const b=document.querySelector('.vicp-operate-btn'); if(b) b.click(); }"` |
+| ⑥ | 等 CDN 上传完成 | browser_wait_for | `time: 10` |
+| ⑦ | 获取 CDN URL + 关窗 | browser_evaluate | `function: "() => { document.querySelectorAll('.cke_dialog,.el-overlay,.vicp-close').forEach(el=>el.remove()); const h=CKEDITOR.instances.editor.getData(); const m=h.match(/i-blog\\.csdnimg\\.cn\\/direct\\/[^\"']+/); return m ? 'https://'+m[0] : null; }"` |
+| ⑧ | 重新注入完整正文 + 替换占位符 | browser_evaluate | `function: async () => { const resp=await fetch('http://localhost:18991/article_csdn.html'); const full=await resp.text(); const cdn='CDN_URL'; let h=full.replace(/<img[^>]*src="[^"]*"[^>]*\/?>/gi,''); h=h.replace('__BODY_IMG_PLACEHOLDER__','<img src=\"'+cdn+'\" style=\"width:100%;max-width:800px;border:1px solid #e0e0e0;border-radius:8px;\" />'); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); return (CKEDITOR.instances.editor.getData().match(/<img/gi)||[]).length===1; }"` |
+| ⑨ | 验证图片 | browser_evaluate | `function: "() => { const h=CKEDITOR.instances.editor.getData(); return { imgCount:(h.match(/<img/gi)||[]).length, cdn:(h.match(/i-blog\.csdnimg\.cn\/direct\/[^"']+/)?.[0]||'none') } }"` |
 
 ### §2c — 封面设置详细步骤
 
