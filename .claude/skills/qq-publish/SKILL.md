@@ -375,6 +375,13 @@ function skillMarkdownIntegrity(markdown, previousLineCount) {
 - IMG3 prompt 中的名词是否出现在 sec5.textSample 中？
 任一项不通过 → 重做模块 2。
 
+**自动化**：直接用 `qq_prompt_engine.py` 执行（内置 SHA256 去重 + 历史记录 + B/C/D 轮选）：
+```
+python qq_prompt_engine.py "sec2_textSample" "sec4_textSample" "sec5_textSample"
+```
+输出 JSON：`prompts`（3 条 prompt）和 `sha256`（去重指纹）。prompts 按 IMG1/IMG2/IMG3 顺序传入模块 3 的 `generate_image.py`。
+历史记录写入 `.qq_prompt_history.json`，保留最近 6 条，防止复用旧 prompt。
+
 ### 模块 3：3 图上传拿 CDN（SOP-IMG-03）
 
 **前置**：CORS 服务已启动（§5），模块 2 的 3 个 prompt 已就绪。
