@@ -1,6 +1,6 @@
 ---
 name: blogger-publish
-description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.0。HTTP server + CORS fetch 注入。
+description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.1 — 审计减法。8步固定路径，固定5 H3，去重融合。
 ---
 
 # Blogger · WealthWiseDaily · 全自动发布 v7.0
@@ -17,7 +17,7 @@ description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.0。HTTP
 | 博主资料名 | SmartMoneyMoves |
 | 定位 | 个人理财 · 省钱攻略 · 英文，2,000-2,500 词 |
 | 目标受众 | Gen Z / Millennials，美式中产焦虑 |
-| 当前博文 | 44 篇（最新: 2026-07-23 第44篇） |
+| 当前博文 | 46 篇（最新: 2026-07-24 第46篇） |
 
 ---
 
@@ -26,10 +26,10 @@ description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.0。HTTP
 **本技能是具备硬阻断条件的全自动执行流程。任何确认式停顿都视为偏移。**
 
 ```
-Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → Step 4a → Step 5
+Phase 0 → Step 1 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → Step 5
 ```
 
-四条熔断线贯穿全程：字数<2000、H3<标题承诺数字、注入偏差>5%、发布后逐H3段落验证失败。任一条触发即停止，回退修复。
+四条熔断线贯穿全程：字数<2,000（Step 2）、H3<5（Step 2d）、注入偏差>5%两次仍失败（Step 4）、发布后逐H3段落验证失败（Step 5）。任一条触发即停止，回退修复。
 
 ---
 
@@ -48,7 +48,7 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 ### Step 1：头部交叉研究
 
 **输入**：无
-**动作**：用 Exa 搜索 NerdWallet + The Penny Hoarder 最新文章，提取标题/角度/数据 → 找交叉点 → 确定选题角度 → 选标题公式（从 §1b 6 种中轮换，最近2篇禁用）
+**动作**：用 Exa 搜索 NerdWallet + The Penny Hoarder 最新文章，提取标题/角度/数据 → 找交叉点 → 确定选题角度 → 选标题公式（从 §1a 6 种中轮换，最近2篇禁用）
 **验证**：角度与最近2篇主题不同
 **失败**：交叉点与最近2篇重复 → 重新深翻页面，不将就
 **恢复点**：Step 1 入口
@@ -61,20 +61,10 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 - 通用：应急基金目标 $500-$1,000 / 3-6个月；HYSA 当前 APY 约 3.5-4.5%
 
 ---
-
-### Step 1.5：生文前字数预算
-
-**输入**：选题角度 + 标题公式
-**动作**：套用 45 段骨架（Intro 7 + 4×H3×6 + 拆解 5 + How-to 6 + 结尾+内链 3），计算每段配额 35-45 词，骨架应 ≥1,300 词
-**验证**：首次 Write 后 `wc -w` ≥ 2,000（写一段验一段累计）
-**失败**：<2,000 → 在已有段落扩细节（数据/自嘲/数字），不新建 H3/H2。>2,500 → 砍段落数最少的 H3 前 2 段
-**恢复点**：修补后重新 `wc -w`
-
-
 ### Step 2：生成文章正文 HTML
 
-**输入**：§0 骨架 + 标题
-**动作**：按 §1c 去 AI 味规则填充。每段 1-3 句 + 长短句混搭 + 真人过渡词（≥2）+ 自嘲（≥1）+ 平行结构破坏 + contractions（≥5）+ 无总结句。嵌入 3 条 » 内链 + `<img src="__HERO_IMG__">` 占位。每个 H3 按固定顺序换切入角度（情感→数字→对话→场景→反直觉）
+**输入**：§2 骨架 + 标题
+**动作**：按 §1b 去 AI 味规则填充。每段 1-3 句 + 长短句混搭 + 真人过渡词（≥2）+ 自嘲（≥1）+ 平行结构破坏 + contractions（≥5）+ 无总结句。嵌入 3 条 » 内链 + `<img src="__HERO_IMG__">` 占位。每个 H3 按固定顺序换切入角度（情感→数字→对话→场景→反直觉）
 **验证**：`wc -w` ≥ 2,000（Write 后立即执行，<2,000 进入失败分支）
 **失败**：<2,000 → 在现有段落扩细节后重新验证
 **恢复点**：Step 2 入口，重写后再次 `wc -w`
@@ -86,7 +76,7 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 **输入**：HTML 含 `__HERO_IMG__` / `__INNER_IMG_1__` ~ `__INNER_IMG_4__` 占位符，alt 属性已写好 prompt
 **动作**：`python scripts/auto_blogger_images.py`（自动检测占位符 → 从 alt 取 prompt → 并行调 Agnes API → 替换 URL → 质检无 Unsplash → 写回）
 **验证**：5 张图全部成功（URL 含 `agnes-ai.space`），无占位符残留
-**失败**：部分失败 → `python scripts/auto_blogger_images.py --retry-failed`（脚本容错，单图失败不中断）
+**失败**：部分失败 → 重新运行 `python scripts/auto_blogger_images.py`（脚本容错，单图失败不中断其他图；重跑会用 alt 文本重新生成本轮失败图；若 Agnes 503 持续，传入 `--prompts "hero text|inner1 text|inner2 text|inner3 text"` 跳过 alt 提取环节）
 **恢复点**：重新运行脚本
 
 **Prompt 规则（三步合一，不拆三段）**：
@@ -108,10 +98,10 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 
 ### Step 2d：内容完整性校验
 
-**输入**：正文 HTML + 标题
-**动作**：从标题提取承诺数字（`\d+\s+(Move|Tip|Way|Card|Question|Lesson|Number|Step|Thing)`），统计 `<h3>` 数量
-**验证**：H3 数量 ≥ 标题承诺数字
-**失败**：不足 → **熔断**，补足 H3 段落后重新校验
+**输入**：正文 HTML
+**动作**：统计 `<h3>` 数量
+**验证**：H3 数量 ≥ 5
+**失败**：不足 → **熔断**，补足 5 个 H3 段落后重新校验
 **恢复点**：Step 2 入口
 
 ---
@@ -119,7 +109,7 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 ### Step 3：质量门自检
 
 **输入**：正文 HTML
-**动作**：逐项检 §4a 基础质量门 + §4b Anti-AI 专项门
+**动作**：逐项自检 §1a 标题公式要求（含数字、60-80字符、连续2篇不同）+ §1b 规则 1-7（极短句≥1/每3-4句、过渡词≥2、自嘲≥1、H3开头句式不同、contractions≥5、无总结句、结尾无抽象说教）
 **验证**：每项标记 ✅/❌，全部 ✅ 才能进入 Step 4
 **失败**：任一项 ❌ → 修复后重新自检
 **恢复点**：Step 2 入口
@@ -141,27 +131,19 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 
 **验证**：URL 含 /blog/posts/
 **失败**：未跳转 → 重试 Step 7。注入偏差 >5% → 自动重新 inject（最多2次），仍截断则报告异常停在编辑器
-**恢复点**：Step 4 Step 5（未跳转）/ Step 4 Step 5（注入截断）
-
----
-
-### Step 4a：注入自愈（已集成在 Step 4 Step 5 中，无需独立步骤）
-
-注入后立即比较 `cm.getValue().length` 与源文件长度，偏差 >5% 自动重注入（最多 2 次）。
-
----
+**恢复点**：Step 4 入口（未跳转）/ Step 4 入口（注入截断）
 
 ### Step 5：验证发布结果
 
 **输入**：发布页 URL
 **动作序列**：
 1. **首页浅验证**：导航到博客首页 → 最新文章标题出现在 feed 中
-2. **发布页硬验证**：导航到发布文章页 → `article.querySelectorAll('p').textContent.split(' ').length` ≥ 1,800 + `article.querySelectorAll('h2, h3').length` ≥ 标题数字 + `article.querySelectorAll('img').length` ≥ 4
+2. **发布页硬验证**：导航到发布文章页 → `article.querySelectorAll('p').textContent.split(' ').length` ≥ 1,800 + `article.querySelectorAll('h2, h3').length` ≥ 5 + `article.querySelectorAll('img').length` ≥ 4
 3. **逐 H3 关键词验证**：每个 H3 的专属关键词在 article.innerHTML 中存在（如 "Convenience Store" → "convenience"、"App Store" → "Google Play"、"Quick Dinner" → "frozen pizza" 等）
 
 **验证**：以上全部通过
-**失败**：任一项不通过 → 回编辑器（`/blog/post/edit/{blogID}/{postID}`）→ 按 §7 段落丢失修复 SOP 重新注入 → 点击"更新"→ 重跑 Step 5
-**恢复点**：Step 4 Step 5
+**失败**：任一项不通过 → 回编辑器（`/blog/post/edit/{blogID}/{postID}`）→ 重新注入（Step 4 #5）→ 点击"更新"→ 重跑 Step 5 全部验证（含逐 H3 关键词）
+**恢复点**：Step 5 入口
 
 ---
 
@@ -178,7 +160,7 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 | 数据冲击 | `$[N] [Thing] I Found When I [Action]` | "$2,400 in Waste I Found When I Opened My Bank Statement" |
 | 反直觉 | `What [Common Thing] Actually Costs You $X` | "What Your 'Small' Daily Coffee Actually Costs You $1,825" |
 
-**检查**：含具体数字 / 60-80 字符 / 个人角度或问句 / 1 个情感钩子。前 40 字符不含数字/行动动词则熔断。**连续 2 篇禁止使用同一公式。**
+**检查**：标题必须含至少一个数字（金额或数量均可）/ 60-80 字符 / 个人角度或问句 / 1 个情感钩子。不含数字则熔断。**连续 2 篇禁止使用同一公式。**
 
 ### §1b 去 AI 味（写作时逐条对照）
 
@@ -201,16 +183,18 @@ Phase 0 → Step 1 → Step 1.5 → Step 2 → Step 2a → Step 2d → Step 3 �
 
 ## §2 字数与骨架
 
-### 骨架（45段 · 2,000-2,500 词）
+### 骨架（2,000-2,500 词，固定 5 H3）
 
 ```
 块           段数  累计
 Intro         7段    7
-4 × H3       24段   31    每 H3=6 段（变切入角度）
-数字拆解      5段   36
-How-to        6段   42
-结尾+内链     3段   45
+5 × H3       30段   37    每 H3=6 段（变切入角度）
+数字拆解      5段   42
+How-to        6段   48
+结尾+内链     3段   51
 ```
+
+H3 标题必须包含 5 个分类数字（如"5 Categories"），与 Step 2d 的 h3≥5 一致。
 
 ### 段落长度规则
 
@@ -233,29 +217,7 @@ How-to        6段   42
 
 ---
 
-## §3 质量门
-
-**§3a — 基础门**：
-- [ ] 标题 60-80 字符，前 40 含数字/行动动词
-- [ ] 正文 ≥2,000 词（wc -w，<2,000 熔断）
-- [ ] ≥20 个加粗数字（`<b>$540</b>`, `<b>65%</b>`）
-- [ ] 数据有出处（引用 §1 或写明 "According to X survey"）
-- [ ] 有 2-3 条 `»` 内链
-- [ ] 无禁止模式："In today's world"、"Moreover"、"Furthermore"、"It is important to"
-- [ ] H3 数量 ≥ 标题承诺数字（不足熔断）
-
-**§3b — Anti-AI Voice 专项门**（对应 §1b 规则 1-7）：
-- [ ] 每 3-4 句有 1 个极短句（≤8 词）
-- [ ] ≥2 个真人过渡词
-- [ ] ≥1 处自嘲
-- [ ] 连续 H3 开头句式不同
-- [ ] ≥5 个 contractions
-- [ ] 无总结句
-- [ ] 结尾 100 词内无抽象说教（行动挑战 / 评论钩子 / 自嘲）
-
----
-
-## §4 注入与发布技术细节
+## §3 注入与发布技术细节
 
 ### HTTP 服务器启动
 
@@ -272,40 +234,9 @@ http.server.HTTPServer(('localhost', 8890), CORSHandler).serve_forever()
 ```
 
 端口 8890 已确认可用。冲突时换端口。注入后 `taskkill /f /pid <PID>` 杀掉（PID 从 Bash background 返回获取，不要 `taskkill /f /im python.exe`）。
+------
 
-### CodeMirror 注入代码
-
-```javascript
-await page.evaluate(async () => {
-  const resp = await fetch('http://localhost:8890/blogger_article.html');
-  const html = await resp.text();
-  const cm = document.querySelector('.CodeMirror').CodeMirror;
-  cm.setValue(html);
-  cm.setCursor(cm.lineCount() - 1);
-  const ta = document.querySelector('textarea.Fdco1c');
-  if (ta) {
-    ta.dispatchEvent(new Event('input', {bubbles: true}));
-    ta.dispatchEvent(new Event('change', {bubbles: true}));
-  }
-  return 'OK: ' + cm.getValue().length + ' chars injected';
-});
-```
-
-注入后比较 `cm.getValue().length` 与源文件长度，偏差 >5% 自动重注入（最多 2 次）。2 次后仍截断 → 停在编辑器，报告异常。
-
----
-
-### 发布三步序列
-
-| 步骤 | 动作 | 代码 |
-|------|------|------|
-| Step A - 发布 | evaluate 遍历 `div[role="button"]`，textContent 含"发布"且不含"时间"且 !disabled → click | 遍历 textContent |
-| Step B - 确认 | browser_wait_for("确认", 3s) → evaluate 遍历 `div[role="button"]`，textContent==='确认' 且 offsetParent !== null → click | 必须检查 offsetParent 可见性 |
-| Step C - 跳转 | browser_wait_for 3s → URL 回到 /blog/posts/ 列表页 | 未跳转重试 Step B |
-
----
-
-## §5 选择器速查
+## §4 选择器速查
 
 ⚠️ **不用 `[ref=]` / `getByRole` / `has-text`** — 全部 `page.evaluate` + textContent/aria-label 遍历。
 
@@ -318,26 +249,3 @@ await page.evaluate(async () => {
 | "发布"/"更新" | `div[role="button"]` 遍历 textContent 含"发布/更新"且不含"时间"且 !disabled | 排除 textContent 含"时间" |
 | 确认对话框 | `div[role="button"]` 遍历 textContent==='确认' 且 offsetParent !== null | 非 `<button>`。可能有隐藏同名元素 |
 | 发布页验证 | `article` 元素 | 不在首页做硬验证 |
-
----
-
-## §6 硬阻断
-
-| 类别 | 条件 | 动作 |
-|------|------|------|
-| **浏览器连接** | Google 登录页出现 / 连续 2 篇发布失败 / 编辑器 15s 未加载 | 熔断，报告无法继续 |
-| **注入失败** | 注入后 `cm.getValue().length` 偏差 >5%，自动重 inject 最多 2 次仍截断 | 停在编辑器，报告异常 |
-| **内容验证失败** | 字数 <2,000 / H3 < 标题承诺数字 / 标题前 40 位无数字或行动动词 / 发布后逐 H3 关键词缺失 | 熔断（前3项在 Step 2/2d/5 分别触发；逐 H3 缺失回编辑器修复） |
-| **修复规范性** | 修复已发布文章必须重走全部质量门 + 内容完整性校验 | 禁止跳过 |
-
----
-
-## §7 段落丢失修复 SOP
-
-如果 Step 5 发现 H3 段落内容被截断：
-1. 回编辑器：导航到 `/blog/post/edit/{blogID}/{postID}`
-2. 确认本地 `blogger_article.html` 包含完整内容
-3. 按 §4 重新注入（HTTP server + CORS fetch）
-4. 注入后验证 `cm.getValue().length` 偏差
-5. 点击"更新"按钮（非"发布"）
-6. 重新执行 Step 5 全部验证含逐 H3 关键词

@@ -1,360 +1,229 @@
 ---
 name: wechat-publish
-description: 公众号谋生与人性全自动生产管线 v8.0 — 状态机驱动，无人值守
+description: 公众号谋生与人性全自动生产管线 v9.0 — 减法收敛版
 vars:
   siliconflow_api_key: sk-fhyebysadetapteypeklskautvwwpcizruxnqhbwmrqbacfy
 ---
 
-# 公众号「谋生与人性」v8.0 — 状态机发布引擎
+# 公众号「谋生与人性」v9.0 — 减法收敛版
 
 **唯一入口**：`run_wechat_publish.py`（禁止绕过脚本手工操作）
-**架构**：状态机引擎驱动 22 个状态。AUTO 步骤脚本自动执行，BROWSER 步骤由 Claude 调用 Playwright 操作后标记完成。
-**排版核心**：`bake_wechat_html.py` — `split_blocks()` 句子级拆分 + `--auto-position` 自动算图 + `<p id="pN">` 防 ProseMirror 合并
+
+**架构**：状态机引擎驱动 21 个状态。AUTO 步骤脚本自动执行，BROWSER 步骤由 Claude 调用 Playwright 操作后 `--complete`。全程不询问用户。
 
 ---
 
-## 执行流程
+## 状态定义（21 状态摘要）
 
-### 第 0 步：启动会话
+| 序号 | 状态名 | 类型 | 描述 | 恢复点 |
+|------|--------|------|------|--------|
+| 0 | init | auto | 检查目录/依赖 | ✅ |
+| 1 | dedup | browser | 提取已发表标题到 state | ✅ |
+| 2 | topic | browser | 基于账本 rotation 选题+写文章（分节追加，见下方增量规则） | ✅ |
+| 3 | write | auto | 验证汉字数≥3000；不足时报各章节汉字数引导追加 | ✅ |
+| 4 | split_paras | auto | 将段落拆为≤60汉字短段，不删改内容 | |
+| 5 | qa_para | auto | 段长闸（<150 汉字/段，无连续短段） | |
+| 6 | qa_ai | auto | AI 味闸（ai_score.py ≤45） | |
+| 7 | image_gen | auto | 生图：cover.jpg + inline1-3.jpg | ✅ |
+| 7 | cors | auto | 启动 CORS 服务器 | ✅ |
+| 8 | editor_open | browser | 导航到新建文章编辑页 | ✅ |
+| 9 | title_author | browser | 填入标题和作者 | |
+| 10 | image_upload | browser | 上传 inline1-3.jpg，提取 CDN URL | ✅ |
+| 11 | bake | auto | bake_wechat_html.py 烘焙 | |
+| 12 | validate | auto | validate_wechat_html.py 门禁 | ✅ |
+| 13 | insert | browser | fetch CORS → 清空 → innerHTML 插入 | ✅ |
+| 14 | cover | browser | 上传并设置封面图 | ✅ |
+| 15 | final_verify | browser | DOM 检查 4 项 | ✅ |
+| 16 | publish_ready | browser | 页面留给用户发表 | ✅ |
+| 17 | review | auto | 更新选题账本 | |
+| 18 | cleanup | auto | 清理临时文件 | |
+| 19 | done | terminal | 完成 | ✅ |
+| 20 | error | terminal | 异常终止 | ✅ |
 
-```bash
-cd C:/Users/59314/claudework
-python run_wechat_publish.py --init "选题关键词"
-# 重置状态机，开始新会话
-```
-
-### 第 1 步：状态机循环
-
-```bash
-while true; do
-  python run_wechat_publish.py --status   # 读取 current_state
-  # AUTO  → python run_wechat_publish.py --step
-  # BROWSER → 执行下方对应 Playwright 代码 → python run_wechat_publish.py --complete
-  # terminal(done) → 退出循环
-  # terminal(error) → 判断错误类型：终局错误则通知用户，其余自动重试或回滚
-done
-```
-
----
-
-## 完整状态定义（22 个状态）
-
-| 序号 | 状态名 | 类型 | 描述 | 最大重试 | 恢复点 |
-|---|---|---|---|---|---|
-| 0 | init | auto | 检查目录/依赖 | 1 | ✅ |
-| 1 | topic | auto | 选题: 确定文章主题和标题 | 2 | ✅ |
-| 2 | write | auto | 写作: 生成文章并保存 .txt | 2 | ✅ |
-| 3 | qa_para | auto | 段长闸: check_wechat_para.py | 2 | |
-| 4 | qa_ai | auto | AI味闸: ai_score.py ≤45 | 2 | |
-| 5 | image_gen | auto | 生图: cover.jpg + inline1-3 | 2 | ✅ |
-| 6 | dedup | browser | 去重: Playwright提取已发表标题 | 2 | ✅ |
-| 7 | cors | auto | CORS服务: 启动HTTP服务器 :8768 | 2 | ✅ |
-| 8 | editor_open | browser | 编辑器: 打开新文章编辑页 | 2 | ✅ |
-| 9 | title_author | browser | 标题作者: 填入编辑器 | 2 | |
-| 10 | image_upload | browser | 插图上传: 3张一次传完获取CDN | 2 | ✅ |
-| 11 | bake | auto | 烘焙: bake_wechat_html.py | 2 | |
-| 12 | validate | auto | 门禁: validate_wechat_html.py | 2 | ✅ |
-| 13 | insert | browser | 插入正文: fetch→清空→insertHTML | 2 | ✅ |
-| 14 | visual_check | browser | 视觉检查: 截图验证排版 | 2 | ✅ |
-| 15 | cover | browser | 封面: 上传并设置封面图 | 2 | ✅ |
-| 16 | final_verify | browser | 终极验证: DOM+CDN+表情+封面 | 2 | ✅ |
-| 17 | save | browser | 保存草稿 | 2 | ✅ |
-| 18 | review | auto | 复盘: 更新选题账本 | 1 | |
-| 19 | skill_fix | auto | 技能修复: 固化本次经验 | 1 | |
-| 20 | cleanup | auto | 清理: 临时文件+备份轮换 | 1 | |
-| 21 | done | terminal | 完成 | 0 | ✅ |
+完整状态定义在 `run_wechat_publish.py` 第 51-73 行的 `STATES_DEF`，SKILL.md 不再重复。
 
 ---
 
-## BROWSER 步骤实现
+## BROWSER 步骤 SOP（BROWSER = Claude 通过 Playwright MCP 执行）
 
-### dedup — 去重
+### dedup — 提取已发表标题
 
-```javascript
-// 首次执行需先登录 mp.weixin.qq.com，URL 中获取 token=XXXXXX
-// 提取 token 写入 state：
-//   python -c "import json;s=json.load(open('session_state.json'));s['token']='XXXXXX';json.dump(s,open('session_state.json','w'))"
+**输入**：微信公众平台已登录状态
+**动作**：
+1. `browser_navigate` → `https://mp.weixin.qq.com/`（落地页 token 形如 700980744）
+2. `python -c "json.load(open('session_state.json'));s['token']='{token}';json.dump(s,...)"` 写入 state
+3. `browser_navigate` → `https://mp.weixin.qq.com/cgi-bin/appmsgpublish?sub=list&begin=0&count=20&token={token}&lang=zh_CN`
+4. `evaluate(提取脚本)` → 得到去重标题列表
+5. `python -c "s['dedup_result']=json.dumps(titles,ensure_ascii=False);json.dump(s,...)"` 写入 `session_state.json`
+6. `python run_wechat_publish.py --complete`
 
-browser_navigate → https://mp.weixin.qq.com/cgi-bin/appmsgpublish?sub=list&begin=0&count=20&token={token}&lang=zh_CN
-// 从 snapshot 提取所有已发表文章的标题 → 与当前标题比对
-// 重复则熔断（通知用户主题重复），不重复则 → python run_wechat_publish.py --complete
-```
+**提取脚本**：querySelectorAll `a, .title, h4, span, strong, [class*="title"]` → 过滤掉导航按钮和系统文字 → 去重 → 去掉「原创」后缀。详见 `run_wechat_publish.py` 步骤 1-3 的 JS。
+
+**成功标准**：`session_state.json.dedup_result` 含 ≥1 个标题。
+**失败处理**：重试 2 次后熔断（token 失效则需用户重新登录）。
+
+### topic — 选题+写作（增量规则，禁止覆盖全文）
+
+**输入**：
+- 选题账本（`python run_wechat_publish.py --topic-ledger`）：rotation_index 决定类别
+- 去重列表（`session_state.json.dedup_result`）：已发标题
+
+**增量写作规则**（硬性，无例外）：
+1. **先写大纲**：确定 3-5 个章节标题和目标汉字数（每节 600-1000 汉字，总 ≥3000）
+2. **分节生成**：每写完一节立即执行以下命令追加：
+   ```
+   python run_wechat_publish.py --section-append "章节标题" "章节内容"
+   ```
+   - `--section-append` 会先备份当前版本、追加内容、验证汉字数上升
+   - 如果汉字数下降（不应发生），自动回滚上一版本
+3. **每节达标**：`python run_wechat_publish.py --write-status` 确认当前汉字数满足该节预算后，再写下一节
+4. **附录优先**：正文写完前禁止拆段；写满 3000 汉字后再 `--split-paras`
+5. **不足时只追加**：全文写完后 `python run_wechat_publish.py --status` 如果 write 步骤失败（<3000），只向指定章节追加内容
+6. **字数下降→回滚**：连续两次修改汉字数不增反降，立即停止并恢复上一版本版本
+7. **保留每次合格版本**：`_article_versions/` 目录自动备份，不需要手动操作
+
+**具体步骤**：
+1. 查账本 → 确定 rotation 类别
+2. 写大纲 → 写入 `wechat_article_<主题>.txt`
+3. 按大纲分节写 → 每节用 `--section-append` 追加
+4. 每节后用 `--write-status` 确认汉字数增长
+5. 全部节写完 → `--split-paras` 拆段
+6. 写入 state：`topic`、`title`、`article_file`
+7. `python run_wechat_publish.py --topic-category "类别"`
+8. `python run_wechat_publish.py --complete`
+
+**标题规则**：
+- 格式：痛点+具体场景（不与 dedup_result 重复）
+- 含类别相关热词
+
+**成功标准**：article_file 存在且汉字数≥2400。
+**失败处理**：重试 2 次，超过则熔断。
 
 ### editor_open — 打开编辑器
 
-```javascript
-browser_navigate → https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1&type=77&createType=0&token={token}&lang=zh_CN
-// 等待 editor 加载（.ProseMirror 出现）
-```
+`browser_navigate` → `https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=edit&isNew=1&type=77&createType=0&token={token}&lang=zh_CN`
+
+等待 `.ProseMirror` 元素出现。
 
 ### title_author — 填标题和作者
 
-```javascript
-// 标题
-const pm0 = document.querySelectorAll('.ProseMirror')[0];
-pm0.focus();
-document.execCommand('selectAll');
-document.execCommand('insertText', false, '文章标题');
-
-// 作者
-await page.locator('input[placeholder="请输入作者"]').fill('谋生与人性');
+```playwright
+page.evaluate(() => {
+  document.querySelectorAll('.ProseMirror')[0].focus();
+  document.execCommand('selectAll');
+  document.execCommand('insertText', false, '文章标题');
+});
+page.locator('input[placeholder="请输入作者"]').fill('谋生与人性');
 ```
 
-### image_upload — 上传 3 张正文图片
+### image_upload — 上传正文图片
 
-```javascript
-// Step 1: 点击工具栏插入图片按钮
-document.querySelector('li#js_editor_insertimage')?.click();
-await new Promise(r => setTimeout(r, 1000));
-
-// Step 2: 找到文件 input，用 setInputFiles 一次上传 3 张（Playwright 原生方式）
-// 注意：此处需要在 Playwright 的 browser_run_code_unsafe 中执行
-const fileInput = page.locator('input[type="file"]');
-await fileInput.setInputFiles([
-  'C:\\Users\\59314\\claudework\\inline1.jpg',
-  'C:\\Users\\59314\\claudework\\inline2.jpg', 
-  'C:\\Users\\59314\\claudework\\inline3.jpg'
-]);
-
-// Step 3: 等待上传完成（8-10s，取决于文件大小和网速）
-await page.waitForTimeout(10000);
-
-// Step 4: 从 ProseMirror 正文中提取 CDN URL
-const cdnUrls = await page.evaluate(() => {
-  const bodyPM = document.querySelectorAll('.ProseMirror')[1];
-  if (!bodyPM) return [];
-  return Array.from(bodyPM.querySelectorAll('img'))
-    .map(img => img.src)
-    .filter(src => src && src.startsWith('http'));
-});
-
-// Step 5: 写入 state → Claude 执行
-// 取 cdnUrls[0..2] 写入 session_state.json 的 cdn_urls 字段
-// 然后 python run_wechat_publish.py --complete
+1. 移除遮挡层（`evaluate: document.querySelector('.media_list_box_mask')?.remove()`）
+2. 点击 `li#js_editor_insertimage` → 点击「本地上传」
+3. filechooser 选择 `inline1.jpg` + `inline2.jpg` + `inline3.jpg`
+4. 等待 10s 上传
+5. `evaluate` 提取正文中所有 `<img>` 的 `src`（前 3 个含 CDN 的 URL）
+6. `python -c "s['cdn_urls']=cdn_list;json.dump(s,...)"` 写入 state（注意：存为 list，不是 json.dumps 字符串）
+7. `python run_wechat_publish.py --complete`
 
 ### insert — 插入正文
 
-```javascript
-const resp = await fetch('http://127.0.0.1:8768/article_final.html');
+```playwright
+const resp = await fetch(`http://127.0.0.1:{cors_port}/article_final.html`);
 const html = await resp.text();
-
 const bodyPM = document.querySelectorAll('.ProseMirror')[1];
-bodyPM.focus();
-document.execCommand('selectAll');
-document.execCommand('delete');
-// 一次性 insertHTML（id="pN" 阻止 ProseMirror 合并）
-document.execCommand('insertHTML', false, html);
-
-// 验证
-const withSrc = Array.from(bodyPM.querySelectorAll('img')).filter(i => i.src).length;
-// withSrc !== 3 → 重试
+bodyPM.innerHTML = '';
+await new Promise(r => setTimeout(r, 200));
+bodyPM.innerHTML = html;
+bodyPM.dispatchEvent(new Event('input', {bubbles: true}));
+await new Promise(r => setTimeout(r, 500));
+// 验证：正文中带 src 的 img 数 == 3
 ```
 
-### visual_check — 视觉检查
+**注**：CORS 端口从 `_cors_port.txt` 或 `session_state.json.cors_port` 读取，非固定值。
 
-截图检查：开头段落正常、中间图片位置正确、结尾完整。用 `browser_take_screenshot` 截取 viewport。
-检查项：
-1. Markdown 残留（无 `#`、`*`、`---` 等原始符号）
-2. 段落堆积（连续空段 ≤2）
-3. 图片已渲染（img 元素存在）
+### cover — 上传并设置封面
 
-### cover — 封面上传（**加固版 2026-07-21**）
+**Phase A：传 cover.jpg 到图片库**
 
-**核心原则**：全部用 Playwright 原生 `page.locator().click()`，不用 `page.evaluate` 内 .click()（Vue 弹窗对 evaluate 内 click 不响应）。每步均验证，任何一步失败→刷新页面从头重试。
+步骤同 image_upload（点击 `li#js_editor_insertimage` → 本地上传 → filechooser `cover.jpg` → 等待 15s）。
+传完后用 CORS fetch `article_final.html` 覆盖正文（cover.jpg 上传后会被插入正文末尾），验证正文图片数恢复为 3。
 
-**黄金路径：点封面+ → 从图片库选择 → 选 cover.jpg → 下一步 → 确认 → 验证预览**
+**Phase B：从图片库选封面**
 
-```javascript
-// ========== 封面上传 — 加固 6 步序列 ==========
-// 要求：cover.jpg 已存在于微信图片库（由 image_gen 步骤预先上传）
+1. 点击封面「+」按钮（`.select-cover__btn.js_cover_btn_area`）→ 弹出菜单
+2. 点击「从图片库选择」
+3. 在「选择图片」弹窗中点「最近使用」→ 选第一张图
+4. 点「下一步」→ 裁剪弹窗中点「确认」
+5. 验证：预览区 `.js_cover_preview_new` 的 `backgroundImage` 含 `mmbiz`
 
-// Step 0: 检查当前封面状态，避免重复操作
-const initCheck = await page.evaluate(() => {
-  const preview = document.querySelector('.js_cover_preview_new');
-  if (!preview) return 'no_element';
-  return /mmbiz/.test(getComputedStyle(preview).backgroundImage) ? 'already_set' : 'empty';
-});
-if (initCheck === 'already_set') {
-  // 封面已存在，跳过
-} else {
-  // ---------- Step 1: 点封面"+"按钮 ----------
-  // 用精确选择器避免 ambiguity（.js_cover_btn_area 匹配 3 个元素）
-  await page.locator('.select-cover__btn.js_cover_btn_area').first().click();
-  await page.waitForTimeout(2000);
-
-  // ---------- Step 2: 点"从图片库选择" ----------
-  const libClicked = await page.evaluate(() => {
-    // 选择可见的 a.pop-opr__button.js_imagedialog（3 个匹配中只有 1 个可见）
-    const links = [...document.querySelectorAll('a.pop-opr__button.js_imagedialog')];
-    for (const link of links) {
-      if (link.offsetParent !== null) { link.click(); return true; }
-    }
-    return false;
-  });
-  if (!libClicked) throw new Error('封面步骤: 找不到可见的"从图片库选择"');
-  await page.waitForTimeout(3000);
-
-  // ---------- Step 3: 等待图片库弹窗 → 选择 cover.jpg ----------
-  // 确认弹窗已渲染
-  await page.locator('.weui-desktop-dialog__title').filter({ hasText: '选择图片' }).waitFor({
-    state: 'visible', timeout: 5000
-  });
-  // 选中有"cover.jpg"字样的图片项
-  await page.locator('.weui-desktop-img-picker__item').filter({ hasText: 'cover.jpg' }).first().click();
-  await page.waitForTimeout(1500);
-
-  // ---------- Step 4: 点"下一步"进入裁剪 ----------
-  await page.locator('button:has-text("下一步"):not([disabled])').click();
-  await page.waitForTimeout(3000);
-
-  // ---------- Step 5: 等待裁剪弹窗 → 点"确认" ----------
-  await page.locator('.weui-desktop-dialog__title').filter({ hasText: '编辑封面' }).waitFor({
-    state: 'visible', timeout: 5000
-  });
-  await page.locator('button:has-text("确认"):not([disabled])').click();
-  await page.waitForTimeout(3000);
-
-  // ---------- Step 6: 验证封面 ----------
-  const coverResult = await page.evaluate(() => {
-    const preview = document.querySelector('.js_cover_preview_new');
-    if (!preview) return { pass: false, reason: 'preview元素不存在' };
-    const bg = getComputedStyle(preview).backgroundImage;
-    return { pass: /mmbiz/.test(bg), url: bg.slice(0, 100) };
-  });
-  if (!coverResult.pass) {
-    throw new Error(`封面验证失败: ${coverResult.reason || '无mmbiz CDN'}`);
-  }
-}
-
-// ========== 完成后标记状态 ==========
-// → python run_wechat_publish.py --complete
-```
-
-### 失败恢复策略
-
-| 故障点 | 表现 | 恢复动作 |
-|--------|------|----------|
-| Step 1: 找不到封面按钮 | 选择器无匹配 | 刷新页面回 draft（appmsgid 不变）→ 从头重试 |
-| Step 2: 菜单不弹出 | 点击后 no visible link | 刷新页面 → 重试，增 wait 到 3s |
-| Step 3: 图片库弹窗空白 | Vue 组件未渲染 | 刷新页面 → 重试，增 wait 到 5s |
-| Step 4: cover.jpg 不在库中 | 选择器无匹配 | 重新 image_gen 步骤生图 → 手动上传 cover.jpg → 重试 |
-| Step 5: 裁剪弹窗/确认按钮不可用 | waitFor 超时 | 刷新页面 → 重试 |
-| Step 6: 验证失败 | 预览图无 mmbiz CDN | 刷新页面 → 重试整个序列 |
-
-**连续 2 次失败**：回滚到 `editor_open` 恢复点，走 `image_upload → bake → validate → insert → visual_check → cover` 重新跑。
-
-**禁止新增分支或跳过验证**。失败就重试全序列，不另辟蹊径。
+**成功标准**：封面 mmbiz CDN 存在。
+**失败处理**：任何一步失败 → 刷新编辑页 → 从 Phase A 重试。连续 2 次失败回滚到 `image_upload` 恢复点重走全序列。
 
 ### final_verify — 终极验证
 
-```javascript
+```playwright
 const bp = document.querySelectorAll('.ProseMirror')[1];
 const text = bp.innerText;
 const preview = document.querySelector('.js_cover_preview_new');
-const hasCover = preview ? /mmbiz/.test(getComputedStyle(preview).backgroundImage) : false;
-const imgsWithSrc = Array.from(bp.querySelectorAll('img')).filter(i => i.src).length;
-const cnCount = (text.match(/[一-鿿]/g) || []).length;
-const authorInput = document.querySelector('input[placeholder="请输入作者"]');
-const hasAuthor = authorInput?.value === '谋生与人性';
-
-return {
-  pass: hasCover && imgsWithSrc === 3 && cnCount >= 2400 && cnCount <= 3200 && hasAuthor,
-  checks: { hasCover, imgsWithSrc, cnCount, hasAuthor }
+const checks = {
+  hasCover: preview ? /mmbiz/.test(getComputedStyle(preview).backgroundImage) : false,
+  imgsWithSrc: Array.from(bp.querySelectorAll('img')).filter(i => i.src).length,
+  cnCount: (text.match(/[一-鿿]/g) || []).length,
+  hasAuthor: document.querySelector('input[placeholder="请输入作者"]')?.value === '谋生与人性'
 };
+return { pass: checks.hasCover && checks.imgsWithSrc === 3 && checks.cnCount >= 2400 && checks.hasAuthor, checks };
 ```
 
-### save — 保存草稿
+**不通过 → 回滚到 `editor_open` 恢复点重走全序列。**
 
-```javascript
-// Escape × 3 回到顶层（如有弹窗遮挡）
-await page.keyboard.press('Escape');
-await new Promise(r => setTimeout(r, 500));
-await page.keyboard.press('Escape');
-await new Promise(r => setTimeout(r, 500));
+### publish_ready — 通知用户
 
-// 点击"保存为草稿"按钮
-await page.locator('button:has-text("保存为草稿")').click();
-await new Promise(r => setTimeout(r, 2000));
-
-// 验证：历史版本记录中出现"手动保存"
-const historyCheck = await page.evaluate(() => {
-  const cells = [...document.querySelectorAll('td')];
-  const saveRow = cells.find(c => c.innerText.includes('手动保存'));
-  return { saved: !!saveRow, detail: saveRow?.innerText || '' };
-});
-// saved === true 证明保存成功
-// 保存 appmsgid（从 URL 中提取）到 session_state.json
-```
+页面保持在编辑状态。告知用户：文章已准备就绪，可在编辑页审核后发表。
 
 ---
 
-## 排版管道（v8.0 — 极简固化）
+## 质量门（硬性，不通过即重试或熔断）
 
-排版由 `bake_wechat_html.py` 完成，三行 CSS 常量，三种块类型：
-
-```
-split_blocks() → auto_position → 渲染 → 全文 = 三种 <p>
-  ↑按。！？拆句      ↑82%/55%/25%    ↑ body / sub / img
-```
-| 元素 | HTML | 关键 CSS |
-|------|------|----------|
-| 正文 | `<p id="p{N}">` | `font-size:18px;line-height:2;margin:0 0 24px;` |
-| 子标题 | `<p id="h{N}">` | `font-size:22px;font-weight:700;color:#1677ff;text-align:center;margin:32px 0;` |
-| 图片包裹 | `<p id="i{N}"><img>` | `margin:28px 0;text-align:center;` |
-
-`<p id="p/h/i{N}">` 的 `id` 唯一（N 递增），ProseMirror 不合并不同 id 的 `<p>`，且 `<p>` 不被套多层 `<section>`。只输出 `<p>`+`<img>`，通过 8 项门禁。
-
----
-
-## 回归测试
-
-检查项：
-| 检查 | 预期 |
-|------|------|
-| 封面存在 | 有 mmbiz 背景图 |
-| 无点号段 | dotCount === 0 |
-| 3 张有效图片（有 src） | imgsWithSrc === 3 |
-| 图片位置误差 ≤5% | [25, 55, 82] 正负 5 |
-| 小标题 4-7 个 | 一二三四... |
-
-pass=false → 回滚到上一个恢复点重新执行黄金路径。
-
----
-
-## 质量门
-
-1. **段长闸**：`check_wechat_para.py` — 无段落超 150 汉字，无连续短段（<20 汉字）
-2. **AI味闸**：`ai_score.py` ≤45 分
-3. **字数闸**：2400~3200 汉字
-4. **去重闸**：与已发表文章标题不重复
-5. **封面闸**：封面上传后验证 mmbiz CDN 存在
-6. **视觉闸**：截图检查无 Markdown 残留、图片可见
-7. **回归闸**：5 项回归测试全部 pass
-
----
+1. 汉字数≥3000（`len(re.findall(r'[一-鿿]', text))`，只计 CJK 统一表意字符）
+2. 段长闸：check_wechat_para.py — 无段落超 150 汉字，无连续短段（<20 汉字）
+3. AI 味闸：ai_score.py ≤45
+4. 标题与已发表不重复
+5. 正文图数=3
+6. 封面上传含 mmbiz CDN
 
 ## 终局错误（需通知用户）
 
-1. 登录失效 / 扫码页面 / 验证码
+1. 登录失效/扫码页面/验证码
 2. Playwright 连续两次真实调用失败
 3. 平台接口连续两次 5xx
 4. 文件读写异常
-5. 质量门自动修复两次仍不通过
+5. 质量门重试 2 次仍不通过
 
 其他一切错误由状态机自动重试或回滚恢复点。
 
 ---
 
-## 状态机自动化 CLI 命令
+## CLI 命令（全部）
 
-```bash
-python run_wechat_publish.py --status          # 查看当前状态
-python run_wechat_publish.py --step            # 执行当前 AUTO 步骤
-python run_wechat_publish.py --complete        # 标记当前 BROWSER 步骤完成
-python run_wechat_publish.py --dry-run         # 测试所有非浏览器步骤
-python run_wechat_publish.py --init "主题"      # 初始化新会话
-python run_wechat_publish.py --rollback        # 回退到上一个恢复点
-python run_wechat_publish.py --reset           # 重置状态机
-python run_wechat_publish.py --abort REASON    # 异常终止
-python run_wechat_publish.py --regression-test # 打印回归测试 JSON
 ```
+python run_wechat_publish.py --status             # 查看当前状态
+python run_wechat_publish.py --step               # 执行当前 AUTO 步骤
+python run_wechat_publish.py --complete           # 标记 BROWSER 步骤完成
+python run_wechat_publish.py --dry-run            # 测试所有非浏览器步骤
+python run_wechat_publish.py --init               # 初始化新会话（自动选题）
+python run_wechat_publish.py --topic-category     # 记录选题类别
+python run_wechat_publish.py --topic-ledger       # 查看选题账本
+python run_wechat_publish.py --rollback           # 回退到上一个恢复点
+python run_wechat_publish.py --reset              # 重置状态机
+python run_wechat_publish.py --abort REASON       # 异常终止
+python run_wechat_publish.py --section-append     # 追加章节（自动备份+验证汉字数增长）
+python run_wechat_publish.py --write-status       # 显示汉字数/章节分布/版本数
+python run_wechat_publish.py --split-paras        # 段落拆分为≤60汉字短段（不删改内容）
+python run_wechat_publish.py --write-backup       # 主动备份当前文章版本
+python run_wechat_publish.py --write-rollback     # 回滚到上一文章版本
+```
+
+## 排版管道（不变）
+
+`bake_wechat_html.py`：`split_blocks()` 按 `。！？` 拆句 → `--auto-position` 自动算图位置（25%/55%/82%）→ 输出 `<p id="p/h/i{N}">` 三种块。`<p id="p/h/i{N}">` 的 `id` 递增，ProseMirror 不合并不同 id 的 `<p>`，且 `<p>` 不被套 `<section>`。
