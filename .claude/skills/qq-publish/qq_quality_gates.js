@@ -23,25 +23,19 @@ function hanCount(s) {
 // 句界拆段（只在完整句号边界拆分）
 // ============================================================
 function splitPlainParagraphAtSentenceBoundaries(text, softMax, hardMax) {
-  softMax = softMax || 95;
+  softMax = softMax || 9999; // 不再按长度合并，一句一段
   hardMax = hardMax || 150;
   var sentences = String(text).trim().match(/[^。！？!?；;…]+(?:……|[。！？!?；;…]+|$)/g) || [];
   var groups = [];
-  var current = '';
   for (var i = 0; i < sentences.length; i++) {
     var sentence = sentences[i];
     if (hanCount(sentence) > hardMax) {
       throw new Error('单句超过' + hardMax + '汉字，必须重写，禁止从中切断：' + sentence.slice(0, 40) + '...');
     }
-    if (current && hanCount(current + sentence) > softMax) {
-      groups.push(current.trim());
-      current = sentence;
-    } else {
-      current += sentence;
-    }
+    // 一句一段，不再合并
+    groups.push(sentence.trim());
   }
-  if (current.trim()) groups.push(current.trim());
-  return groups;
+  return groups.filter(function(g) { return g.length > 0; });
 }
 
 // ============================================================
@@ -54,7 +48,7 @@ function normalizeMobileParagraphs(html) {
   for (var i = 0; i < ps.length; i++) {
     var p = ps[i];
     if (p.hasAttribute('data-body-img') || p.querySelector('img')) continue;
-    if (hanCount(p.textContent) <= 95) continue;
+    // 全部段落都拆，不跳过短段
     if (p.children.length) {
       throw new Error('含行内富文本的超长段落禁止自动拆分，需人工按完整句界重写');
     }
