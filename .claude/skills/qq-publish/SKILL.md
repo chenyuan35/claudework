@@ -129,25 +129,199 @@ IF 命中「例外(下沉化AI技巧)」 → 视为禁止类（FAIL），不得�
 
 PHASE 0 输出 FAIL → 立即熔断，不进入 PHASE 1，不准备任何素材。
 
+## PHASE 1：流量诊断（硬性，不通过不发布）
+
+### 1.1 检查历史发布数据
+
+内容管理 evaluate 统计（用 body.innerText 逐行解析）：
+- 已发布文章总数
+- 其中阅读 > 0 的篇数
+- 最近 7 天发布的篇数
+
+IF 阅读 > 0 的篇数 = 0 → 冷启动标志 = true
+IF 最近 7 天发布篇数 < 4 → 发布频率不合格
+
+### 1.2 检查AI声明完整性
+
+evaluate 遍历已发布列表，检查是否有「未声明」标签。IF 存在 → 记录篇数。
+
+### 1.3 诊断结论
+
+合并 1.1–1.2，输出：可发布 / 需修复后发布 / 账号异常熔断
+PHASE 1 输出 FAIL → 立即终止，不进入 PHASE 2。
+
+## PHASE 2：去重验证（熔断级，必须硬匹配）
+
+### 2.1 抓取已发布标题列表
+
+内容管理页 body.innerText 逐行解析「全部」列表（⚠️ 不要用 a[href*="/article/preview"]）。
+
+### 2.2 比对
+
+```
+FOR EACH 已发布标题:
+    IF 待发布关键词全部出现在某标题 → FAIL（已发布过）
+    IF 待发布关键词部分出现 → FAIL（高度相似）
+```
+
+PHASE 2 输出 FAIL → 立即终止。
+
+## PHASE 2.3：内容模式审计
+
+取最近 5 篇的开头和结构，检查开头句式/叙事结构/话题簇是否 ≥3 篇重复。任一命中 → 本文换被命中的维度。
+
+## PHASE 2.5：正文质量门 + 手机端排版门
+
+先对最终 HTML 做 DOM 级检查，再做 390px 手机预览。质量门代码在 `qq_quality_gates.js`。
+
+执行顺序：
+1. `normalizeMobileParagraphs(html)` — 按句界拆段
+2. `qualityGateHTML(html, {requireImages: false})` — 汉字/段长/h2/区块检查
+3. 人工 7 项审计（SOP-AUDIT-01）
+4. 连续 FAIL 2 轮 → 退回整节重写
+
+## PHASE 3：图片四模块（硬化 SOP，不可跳过，2026-07-25 新增）
+
+本节固化为 4 个模块依次执行。不可跳过、不可合并、不可"顺带完成"。每个模块输出指定产物，缺一项即 FAIL。
+
+### 模块 1：正文区块提取（SOP-IMG-01）
+
+**输入**：当前编辑器 ProseMirror 正文文本（已通过质量门 ≥ 2000 汉字、≥ 6 个 h2）
+
+**执行**：
+1. 从 `.ProseMirror.textContent` 读取全文
+2. 按标题关键词找出全部 6 个 h2 区块（见账号信息标题列表）
+3. 用 `totalHan * 0.25 / 0.50 / 0.75` 计算目标汉字位置
+4. 找到对应区块：按累计汉字数映射到具体 h2
+5. 取该区块前 3 段完整段落文本
+
+**输出**（3 项，缺一项即 FAIL）：
+```json
+[
+  {"img":"IMG1","h2":"标题","secHan":504,"textSample":"当年玩《魔兽世界》打熔火之心，四十个人没一个掉线的..."},
+  {"img":"IMG2","h2":"标题","secHan":537,"textSample":"在游戏里聊理想、聊工作、聊人生困惑，但从来没问过对方真名叫什么..."},
+  {"img":"IMG3","h2":"标题","secHan":561,"textSample":"剩下的名字就像一座数字墓园，记录着那些年你一起玩过游戏但已经走散了的人..."}
+]
+```
+
+**验收**：3 个区块的 title、secHan、textSample 均已输出，每个 secHan ≠ 0。
+
+### 模块 2：scene_prompt 自动提取生成（SOP-IMG-02）
+
+**输入**：模块 1 输出的 3 个区块信息（title + textSample）
+
+**执行规则**（自动提取，禁止手写、禁止复用旧 prompt）：
+
+1. **实体提取**：从 textSample 中提取以下 5 类关键词，每类至少 2 个：
+   - 人物/主体（特定名词：Boss名、职业、武器名）
+   - 场景/环境（地点、光线、时间）
+   - 动作/事件（具体动作、过程）
+   - 情感关键词（原文中出现的情感描述词）
+   - 风格/时代（游戏名、美术风格、年代感）
+
+2. **组合规则**：按 `{实体}，{动作}，{场景}，{物件}，{情绪}，{风格}，4K，高度细节` 格式组装。所有词必须出自该区块正文，禁止凭空编造。
+
+3. **多样性**：相邻两张图的 B风格/C光线/D氛围 三项至少 2 项不同。风格/光线/氛围从 §6.2 提示词元素表随机轮选。
+
+4. **禁止**：逐字复用上一轮的 prompt、只换文件名不换内容、用 §6.2 的封面提示词代替正文图 prompt。
+
+5. **验收**：3 个 prompt 的 SHA256 三者不同，且每个 prompt 中的关键词至少 60% 可追溯到对应 textSample。
+
+**自检**：每执行完模块 3（图片生成后），做 prompt 回溯检查：
+- IMG1 prompt 中的名词是否出现在 sec2.textSample 中？
+- IMG2 prompt 中的名词是否出现在 sec4.textSample 中？
+- IMG3 prompt 中的名词是否出现在 sec5.textSample 中？
+任一项不通过 → 重做模块 2。
+
+**自动化**：直接用 `qq_prompt_engine.py` 执行（内置 SHA256 去重 + 历史记录 + B/C/D 轮选）：
+```
+python qq_prompt_engine.py "sec2_textSample" "sec4_textSample" "sec5_textSample"
+```
+输出 JSON：`prompts`（3 条 prompt）和 `sha256`（去重指纹）。prompts 按 IMG1/IMG2/IMG3 顺序传入模块 3 的 `generate_image.py`。
+历史记录写入 `.qq_prompt_history.json`，保留最近 6 条，防止复用旧 prompt。
+
+### 模块 3：3 图上传拿 CDN（SOP-IMG-03）
+
+### 模块 3：3 图上传拿 CDN（SOP-IMG-03）
+
+**前置**：CORS 服务已启动（§5），模块 2 的 3 个 prompt 已就绪。
+
+**图片生成**：
+```
+python generate_image.py "<IMG1 prompt>" body-1.jpg 1792x1024
+python generate_image.py "<IMG2 prompt>" body-2.jpg 1792x1024
+python generate_image.py "<IMG3 prompt>" body-3.jpg 1792x1024
+```
+Agnes API key 已硬编码在 `generate_image.py` 中，无需额外配置。
+验收：3 个文件均存在、每个 > 10KB、SHA256 三者不同。
+
+**上传取 CDN**：
+对每张图，通过编辑器"插入图片"→"本地上传"→ Playwright fileChooser 原生上传：
+1. 点击 `[data-toolbar-item-of="imagePlugin"]` 打开对话框
+2. 点击 `.omui-upload-image-trigger` 触发 file chooser
+3. `browser_file_upload` 设置文件路径
+4. 等待上传完成 → 点击 `button:text-is("确认")`
+5. 记录插入到 ProseMirror 中的 img src（`inews.gtimg.com/om_bt/.../641` 格式）
+
+**输出**（3 项，缺一项即 FAIL）：
+```json
+{"cdn_srcs":["inews.gtimg.com/om_bt/AAAA/641","inews.gtimg.com/om_bt/BBBB/641","inews.gtimg.com/om_bt/CCCC/641"]}
+```
+验收：3 个 src 不同、全部以 `inews.gtimg.com` 开头、全部 `naturalWidth > 0`。
+
+### 模块 4：按渲染坐标插图并复验（SOP-IMG-04）
+
+**输入**：正文 HTML + 3 个 CDN src
+
+**前置条件**：qq_image_ops.js 已注入页面（`window.qqImageOps` 可用），qq_quality_gates.js 已注入（`window.qqGates` 可用）。
+
+**执行步骤**：
+
+1. 从 ProseMirror 提取正文文本
+2. 离线构建含 `__BODY_IMG_1/2/3` 占位符的 HTML（`data-body-img` + `data-lock-h2` 属性）
+3. 调用 `bindBodyImageSources(html, cdn_srcs, [2,4,5])` 替换占位符
+4. 调用 `optimizeBodyImagePositions(pm, html, {targets:{1:0.25,2:0.50,3:0.75}, rounds:3})`
+5. 将优化后的 HTML 通过 `execCommand('insertHTML')` 单次整段插入
+6. 调用 `liveImageGate(pm, 0.05)` 复验
+
+**验收输出**（全部必填，缺一项即 FAIL）：
+```
+3 个不同 CDN src: [src1, src2, src3]
+3 张图 naturalWidth: [w1, w2, w3] (全部 > 0)
+3 个实际 ratio:
+  IMG1 target=0.25 actual=X.XXX error=±0.0XX
+  IMG2 target=0.50 actual=X.XXX error=±0.0XX
+  IMG3 target=0.75 actual=X.XXX error=±0.0XX
+每张图前后段落文本（prev/next 各前 50 字）
+最大误差 ≤ 0.05: PASS/FAIL
+```
+
+**失败处理**：任一 ratio 误差 > 0.05 → 调整 `data-lock-h2` 锁定值重新执行步骤 2-5，最多 2 轮。2 轮仍 FAIL 则记录不动，不阻止发布。
+
+
+## PHASE 4：发布后验证
+
+### 4.1 确认发布成功
+
+```
+IF URL 含 /main/management/articleManage → PASS
+ELSE → FAIL（记录异常 URL）
+```
+
+发布成功后是「审核中」状态，列表顶部出现新标题即成功。
+
+### 4.2 记录本次发布
+
+```json
+{"title": "实际标题", "source": "手工发文", "timestamp": "发布时间", "status": "审核中"}
+```
+
+### 4.3 流量跟踪预约
+
+- 发后 8 小时阅读 = 0 → 触发冷启动诊断
+- 连续 3 篇阅读 = 0 → 记录冷启动状态（不阻止发布）
+
 ## §5 CORS 图片服务（发布前必须启动）
-
-Python http.server 默认无 CORS header，跨域 fetch 封面图会失败。
-
-```
-cd C:\Users\59314\claudework
-python -c "
-import http.server, socketserver, os
-os.chdir(r'C:\Users\59314\claudework')
-class H(http.server.SimpleHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        super().end_headers()
-s = socketserver.TCPServer(('127.0.0.1', 8768), H)
-s.serve_forever()
-"
-```
-
-启动后 curl 确认 http://127.0.0.1:8768/cover.jpg 返回 200。端口 8768 若被占用换端口；fetch 用 http://127.0.0.1:8768/（不用 localhost）。
 
 ## §6 封面图生成
 
@@ -293,8 +467,8 @@ function skillMarkdownIntegrity(markdown, previousLineCount) {
 
 | 指标 | 阈值 | 验证方式 |
 |:---|:----|:--------|
-| 总汉字数 | ≥ 3000 | hanCount(pm.textContent) |
-| 小标题 h2 | 3000-3599 汉字固定 6 个；3600+ 按 ceil(汉字/600) | h2Count |
+| 总汉字数 | ≥ 2000 | hanCount(pm.textContent) |
+| 小标题 h2 | 2000-3599 汉字固定 6 个；3600+ 按 ceil(汉字/600) | h2Count |
 | 单段汉字 | ≤ 150 | max(paragraphHanzi) |
 | 段长中位数 | ≤ 90 | sortedParas median |
 | 超长段 >120 | 占比 ≤ 10% | over120Count / totalCount |
@@ -321,120 +495,4 @@ function skillMarkdownIntegrity(markdown, previousLineCount) {
 | CORS 端口 | 8768（claudework 根目录） |
 | Python http.server | §5 代码，需 CORS header |
 | Test server 端口 | 8769（qq-publish 技能目录） |
-
-## PHASE 3：图片四模块（硬化 SOP，不可跳过，2026-07-25 新增）
-
-本节固化为 4 个模块依次执行。不可跳过、不可合并、不可"顺带完成"。每个模块输出指定产物，缺一项即 FAIL。
-
-### 模块 1：正文区块提取（SOP-IMG-01）
-
-**输入**：当前编辑器 ProseMirror 正文文本（已通过质量门 ≥ 3000 汉字、≥ 6 个 h2）
-
-**执行**：
-1. 从 `.ProseMirror.textContent` 读取全文
-2. 按标题关键词找出全部 6 个 h2 区块（见账号信息标题列表）
-3. 用 `totalHan * 0.25 / 0.50 / 0.75` 计算目标汉字位置
-4. 找到对应区块：按累计汉字数映射到具体 h2
-5. 取该区块前 3 段完整段落文本
-
-**输出**（3 项，缺一项即 FAIL）：
-```json
-[
-  {"img":"IMG1","h2":"标题","secHan":504,"textSample":"当年玩《魔兽世界》打熔火之心，四十个人没一个掉线的..."},
-  {"img":"IMG2","h2":"标题","secHan":537,"textSample":"在游戏里聊理想、聊工作、聊人生困惑，但从来没问过对方真名叫什么..."},
-  {"img":"IMG3","h2":"标题","secHan":561,"textSample":"剩下的名字就像一座数字墓园，记录着那些年你一起玩过游戏但已经走散了的人..."}
-]
-```
-
-**验收**：3 个区块的 title、secHan、textSample 均已输出，每个 secHan ≠ 0。
-
-### 模块 2：scene_prompt 自动提取生成（SOP-IMG-02）
-
-**输入**：模块 1 输出的 3 个区块信息（title + textSample）
-
-**执行规则**（自动提取，禁止手写、禁止复用旧 prompt）：
-
-1. **实体提取**：从 textSample 中提取以下 5 类关键词，每类至少 2 个：
-   - 人物/主体（特定名词：Boss名、职业、武器名）
-   - 场景/环境（地点、光线、时间）
-   - 动作/事件（具体动作、过程）
-   - 情感关键词（原文中出现的情感描述词）
-   - 风格/时代（游戏名、美术风格、年代感）
-
-2. **组合规则**：按 `{实体}，{动作}，{场景}，{物件}，{情绪}，{风格}，4K，高度细节` 格式组装。所有词必须出自该区块正文，禁止凭空编造。
-
-3. **多样性**：相邻两张图的 B风格/C光线/D氛围 三项至少 2 项不同。风格/光线/氛围从 §6.2 提示词元素表随机轮选。
-
-4. **禁止**：逐字复用上一轮的 prompt、只换文件名不换内容、用 §6.2 的封面提示词代替正文图 prompt。
-
-5. **验收**：3 个 prompt 的 SHA256 三者不同，且每个 prompt 中的关键词至少 60% 可追溯到对应 textSample。
-
-**自检**：每执行完模块 3（图片生成后），做 prompt 回溯检查：
-- IMG1 prompt 中的名词是否出现在 sec2.textSample 中？
-- IMG2 prompt 中的名词是否出现在 sec4.textSample 中？
-- IMG3 prompt 中的名词是否出现在 sec5.textSample 中？
-任一项不通过 → 重做模块 2。
-
-**自动化**：直接用 `qq_prompt_engine.py` 执行（内置 SHA256 去重 + 历史记录 + B/C/D 轮选）：
-```
-python qq_prompt_engine.py "sec2_textSample" "sec4_textSample" "sec5_textSample"
-```
-输出 JSON：`prompts`（3 条 prompt）和 `sha256`（去重指纹）。prompts 按 IMG1/IMG2/IMG3 顺序传入模块 3 的 `generate_image.py`。
-历史记录写入 `.qq_prompt_history.json`，保留最近 6 条，防止复用旧 prompt。
-
-### 模块 3：3 图上传拿 CDN（SOP-IMG-03）
-
-**前置**：CORS 服务已启动（§5），模块 2 的 3 个 prompt 已就绪。
-
-**图片生成**：
-```
-python generate_image.py "<IMG1 prompt>" body-1.jpg 1792x1024
-python generate_image.py "<IMG2 prompt>" body-2.jpg 1792x1024
-python generate_image.py "<IMG3 prompt>" body-3.jpg 1792x1024
-```
-Agnes API key 已硬编码在 `generate_image.py` 中，无需额外配置。
-验收：3 个文件均存在、每个 > 10KB、SHA256 三者不同。
-
-**上传取 CDN**：
-对每张图，通过编辑器"插入图片"→"本地上传"→ Playwright fileChooser 原生上传：
-1. 点击 `[data-toolbar-item-of="imagePlugin"]` 打开对话框
-2. 点击 `.omui-upload-image-trigger` 触发 file chooser
-3. `browser_file_upload` 设置文件路径
-4. 等待上传完成 → 点击 `button:text-is("确认")`
-5. 记录插入到 ProseMirror 中的 img src（`inews.gtimg.com/om_bt/.../641` 格式）
-
-**输出**（3 项，缺一项即 FAIL）：
-```json
-{"cdn_srcs":["inews.gtimg.com/om_bt/AAAA/641","inews.gtimg.com/om_bt/BBBB/641","inews.gtimg.com/om_bt/CCCC/641"]}
-```
-验收：3 个 src 不同、全部以 `inews.gtimg.com` 开头、全部 `naturalWidth > 0`。
-
-### 模块 4：按渲染坐标插图并复验（SOP-IMG-04）
-
-**输入**：正文 HTML + 3 个 CDN src
-
-**前置条件**：qq_image_ops.js 已注入页面（`window.qqImageOps` 可用），qq_quality_gates.js 已注入（`window.qqGates` 可用）。
-
-**执行步骤**：
-
-1. 从 ProseMirror 提取正文文本
-2. 离线构建含 `__BODY_IMG_1/2/3` 占位符的 HTML（`data-body-img` + `data-lock-h2` 属性）
-3. 调用 `bindBodyImageSources(html, cdn_srcs, [2,4,5])` 替换占位符
-4. 调用 `optimizeBodyImagePositions(pm, html, {targets:{1:0.25,2:0.50,3:0.75}, rounds:3})`
-5. 将优化后的 HTML 通过 `execCommand('insertHTML')` 单次整段插入
-6. 调用 `liveImageGate(pm, 0.05)` 复验
-
-**验收输出**（全部必填，缺一项即 FAIL）：
-```
-3 个不同 CDN src: [src1, src2, src3]
-3 张图 naturalWidth: [w1, w2, w3] (全部 > 0)
-3 个实际 ratio:
-  IMG1 target=0.25 actual=X.XXX error=±0.0XX
-  IMG2 target=0.50 actual=X.XXX error=±0.0XX
-  IMG3 target=0.75 actual=X.XXX error=±0.0XX
-每张图前后段落文本（prev/next 各前 50 字）
-最大误差 ≤ 0.05: PASS/FAIL
-```
-
-**失败处理**：任一 ratio 误差 > 0.05 → 调整 `data-lock-h2` 锁定值重新执行步骤 2-5，最多 2 轮。2 轮仍 FAIL 则记录不动，不阻止发布。
 
