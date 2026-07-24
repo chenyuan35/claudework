@@ -267,3 +267,37 @@ function skillMarkdownIntegrity(markdown, previousLineCount) {
 ```
 
 验收必须打印：旧行数、新行数、新增/删除行数、缺失章节、代码围栏状态。任何一项失败，不得覆盖正式 SKILL.md。
+
+### 质量标准汇总表
+
+| 指标 | 阈值 | 验证方式 |
+|:---|:----|:--------|
+| 总汉字数 | ≥ 3000 | hanCount(pm.textContent) |
+| 小标题 h2 | 3000-3599 汉字固定 6 个；3600+ 按 ceil(汉字/600) | h2Count |
+| 单段汉字 | ≤ 150 | max(paragraphHanzi) |
+| 段长中位数 | ≤ 90 | sortedParas median |
+| 超长段 >120 | 占比 ≤ 10% | over120Count / totalCount |
+| 相邻段 >100 | 禁止 | no adjacent > 100 |
+| h2 区块 | 4-8 段；至少 1 段 ≤ 50 | perSection check |
+| 正文图 | 恰好 3 张，src 全不同 | imgCount + uniqueSrcs |
+| 图片位置 | 25%/50%/75% ± 10%（优化目标 ±3%） | renderRatio |
+| 图片 src | 全部 inews.gtimg.com CDN | src.startsWith |
+| 封面 | 腾讯图床已加载 | coverImg.naturalWidth > 0 |
+| AI 声明 | OP-7 文章级 + OP-8 素材级 | declaration text + no warning |
+
+### JS 文件索引
+
+| 文件 | 导出对象 | 核心函数 |
+|:----|:--------|:--------|
+| qq_quality_gates.js | window.qqGates | hanCount / qualityGateHTML / mobileRenderGate / normalizeMobileParagraphs |
+| qq_image_ops.js | window.qqImageOps | uploadOneBodyImage / bindBodyImageSources / optimizeBodyImagePositions / liveImageGate / insertArticleWithTwoPassLimit |
+
+### 环境配置
+
+| 工具 | 版本/路径 |
+|:----|:---------|
+| Agent API | 硬编码在 generate_image.py（无需 settings.json） |
+| CORS 端口 | 8768（claudework 根目录） |
+| Python http.server | §5 代码，需 CORS header |
+| Test server 端口 | 8769（qq-publish 技能目录） |
+
