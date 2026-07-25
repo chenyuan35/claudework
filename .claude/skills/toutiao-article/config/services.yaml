@@ -1,0 +1,17 @@
+# =============================================================================
+# 头条号自动发布 - 外部服务配置 (v8.0)
+# 所有API endpoint、Key、模型名唯一来源。
+# ⚠️ Key内容不得修改、迁移后删除旧SKILL.md中的重复配置。
+# =============================================================================
+
+agens:
+  primary:
+    endpoint: "https://apihub.agnes-ai.com/v1/images/generations"
+    model: "agnes-image-2.1-flash"
+    key: "sk-37fc8R90O1p5YQy7py4vQpmbWywfsnqg3qLJxxJg2cO8y3Ui"
+  fallback:
+    endpoint: "https://api.sese-ai.com/api/generate"
+    auth_header: "Bearer AADDCC001122"
+    model: "z-image"
+    aspect_ratio: "1:1"
+    quality: "1k"

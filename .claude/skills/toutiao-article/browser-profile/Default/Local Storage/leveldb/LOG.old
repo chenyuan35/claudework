@@ -1,0 +1,8 @@
+2026/06/24-17:01:37.469 4d84 Reusing MANIFEST C:\Users\59314\.claude\skills\toutiao-article\browser-profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/24-17:01:37.503 4d84 Recovering log #3
+2026/06/24-17:01:37.504 4d84 Level-0 table #3: started
+2026/06/24-17:01:37.514 4d84 Level-0 table #3: 39146 bytes OK
+2026/06/24-17:01:37.514 4d84 Recovering log #4
+2026/06/24-17:01:37.515 4d84 Reusing old log C:\Users\59314\.claude\skills\toutiao-article\browser-profile\Default\Local Storage\leveldb/000004.log 
+2026/06/24-17:01:37.521 4d84 Delete type=0 #3
+2026/06/24-17:01:37.521 4d84 Delete type=2 #5

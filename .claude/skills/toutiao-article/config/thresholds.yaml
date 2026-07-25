@@ -1,0 +1,122 @@
+# =============================================================================
+# 头条号自动发布 - 阈值配置 (v8.0)
+# 所有数字阈值唯一来源。SKILL.md和脚本只能从此读取，禁止复制数字。
+# =============================================================================
+
+article:
+  # --- 字数阈值 ---
+  chinese_min: 1500                # 发布硬闸：正文最少汉字数
+  chinese_editor_diff_pct: 5       # 编辑器与本地字数差异百分比上限
+  per_para_chinese_max: 60         # 每段汉字硬上限（手机端4行阈值）
+
+  # 生成要求（不告诉模型硬闸值）
+  generation_target_min: 2000      # 生成提示词中要求的汉字数
+  generation_target_high: 2200     # 重试时的汉字目标
+  generation_target_range: "2000—2400" # 推荐范围
+
+  # --- 段落阈值 ---
+  para_count_min: 55
+  para_count_max: 80
+  single_sentence_ratio_min: 0.80  # 一句段占比 ≥80%
+  max_sentences_per_para: 2        # 任一段最多2句
+  max_commas_per_para: 2           # 每段最多2个逗号
+  consecutive_text_paras_max: 10   # 连续纯正文段上限
+  heading_char_threshold: 20        # 短段落字符数阈值（低于此且无句尾标点→识别为小标题）
+
+  # --- 语义区块 ---
+  semantic_blocks_min: 5
+  semantic_blocks_max: 8
+
+  # --- 图片阈值 ---
+  images_required: 3               # 每篇必需图片数
+  image_distribution_bands:        # 三档分布区间（占pm.children百分比）
+    band1_min: 8
+    band1_max: 30
+    band2_min: 30
+    band2_max: 55
+    band3_min: 55
+    band3_max: 85
+  image_gap_min_pct: 15            # 相邻图片间距最小百分比
+  image_last_exclusion_pct: 90     # 最后百分之几不得有图
+  last_paras_no_image: 3           # 最后N段不得有图
+
+  # --- 标题阈值 ---
+  title_len_min: 2
+  title_len_max: 30
+
+  # --- 小标题阈值 ---
+  heading_count_min: 4
+  heading_count_max: 8
+
+topics:
+  # --- 选题评分 ---
+  score_min: 70                     # 选题低于此分不写
+  dimensions:
+    audience_match: 25
+    historical_data: 25
+    practical_value: 20
+    series_follow_value: 15
+    timeliness_search: 10
+    source_reliability: 5
+
+  # --- 7天14篇配比 ---
+  rolling_7d:
+    core_direction_count: 10        # 核心方向篇数
+    adjacent_direction_count: 3     # 相邻方向篇数
+    experimental_count: 1           # 实验/热点篇数
+    directions_to_select: 2         # 选前几个方向为核心
+
+  # --- 热点 ---
+  hot_topic_min_score: 85          # 热点综合评分必须≥此值才能占用相邻名额
+  hot_topic_age_days_max: 3        # 超过N天的不追
+
+  # --- 数据采集 ---
+  fetch_recent_count: 20            # 去重采集最近N篇标题
+  direction_lookback: 30            # 方向数据滚动天数
+
+metrics:
+  # --- 方向排名权重（优先顺序） ---
+  direction_ranking:
+    follow_conversion: 1.0
+    completion_score: 0.9
+    ctr: 0.8
+    interaction_rate: 0.7
+    views: 0.3
+    reads: 0.2
+
+  # --- 运营目标仪表盘（非硬闸） ---
+  per_article_read_target: 2000
+  ctr_target_pct: 5.0
+  interaction_rate_target: 0.2
+
+  # --- 高表现方向判定 ---
+  high_performance:
+    views_min: 500
+    ctr_min_pct: 2.0
+    views_min_alternative: 1000     # 仅标题吸引推荐
+    stable_views_min: 300           # 方向稳定的最低展现
+
+  # --- 低表现方向判定 ---
+  low_performance:
+    consecutive_low_views: 2
+    low_views_threshold: 300
+    ctr_max_pct: 0.5
+    multi_article_low_views: 3
+    multi_article_threshold: 200
+
+  # --- 滚动深度复盘间隔 ---
+  deep_review_interval: 7           # 每N次运行做一次深度复盘
+
+retry:
+  max_retries: 2                    # 最大重试次数（除终局错误外）
+  image_api_retries: 2              # 单个图片API重试次数
+  image_api_wait_sec: 40            # 图片API生成最低等待秒数
+  agens_max_failures: 3             # Agens连续失败N次后启用sese-ai
+
+publish:
+  scheduled_times: ["06:00", "18:00"]
+  articles_per_day: 2
+
+state:
+  history_max: 60                   # history.json保留最近篇数
+  uncertain_max_checks: 3           # 发布状态不确定时最多核验次数

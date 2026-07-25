@@ -1,0 +1,557 @@
+{
+  "thresholds": {
+    "article": {
+      "chinese_min": 1500,
+      "chinese_editor_diff_pct": 5,
+      "per_para_chinese_max": 60,
+      "generation_target_min": 2000,
+      "generation_target_high": 2200,
+      "generation_target_range": "2000—2400",
+      "para_count_min": 55,
+      "para_count_max": 80,
+      "single_sentence_ratio_min": 0.8,
+      "max_sentences_per_para": 2,
+      "max_commas_per_para": 2,
+      "consecutive_text_paras_max": 10,
+      "heading_char_threshold": 20,
+      "semantic_blocks_min": 5,
+      "semantic_blocks_max": 8,
+      "images_required": 3,
+      "image_distribution_bands": {
+        "band1_min": 8,
+        "band1_max": 30,
+        "band2_min": 30,
+        "band2_max": 55,
+        "band3_min": 55,
+        "band3_max": 85
+      },
+      "image_gap_min_pct": 15,
+      "image_last_exclusion_pct": 90,
+      "last_paras_no_image": 3,
+      "title_len_min": 2,
+      "title_len_max": 30,
+      "heading_count_min": 4,
+      "heading_count_max": 8
+    },
+    "topics": {
+      "score_min": 70,
+      "dimensions": {
+        "audience_match": 25,
+        "historical_data": 25,
+        "practical_value": 20,
+        "series_follow_value": 15,
+        "timeliness_search": 10,
+        "source_reliability": 5
+      },
+      "rolling_7d": {
+        "core_direction_count": 10,
+        "adjacent_direction_count": 3,
+        "experimental_count": 1,
+        "directions_to_select": 2
+      },
+      "hot_topic_min_score": 85,
+      "hot_topic_age_days_max": 3,
+      "fetch_recent_count": 20,
+      "direction_lookback": 30
+    },
+    "metrics": {
+      "direction_ranking": {
+        "follow_conversion": 1.0,
+        "completion_score": 0.9,
+        "ctr": 0.8,
+        "interaction_rate": 0.7,
+        "views": 0.3,
+        "reads": 0.2
+      },
+      "per_article_read_target": 2000,
+      "ctr_target_pct": 5.0,
+      "interaction_rate_target": 0.2,
+      "high_performance": {
+        "views_min": 500,
+        "ctr_min_pct": 2.0,
+        "views_min_alternative": 1000,
+        "stable_views_min": 300
+      },
+      "low_performance": {
+        "consecutive_low_views": 2,
+        "low_views_threshold": 300,
+        "ctr_max_pct": 0.5,
+        "multi_article_low_views": 3,
+        "multi_article_threshold": 200
+      },
+      "deep_review_interval": 7
+    },
+    "retry": {
+      "max_retries": 2,
+      "image_api_retries": 2,
+      "image_api_wait_sec": 40,
+      "agens_max_failures": 3
+    },
+    "publish": {
+      "scheduled_times": [
+        "06:00",
+        "18:00"
+      ],
+      "articles_per_day": 2
+    },
+    "state": {
+      "history_max": 60,
+      "uncertain_max_checks": 3
+    }
+  },
+  "selectors": {
+    "pages": {
+      "publish": "https://mp.toutiao.com/profile_v4/graphic/publish",
+      "content_list": "https://mp.toutiao.com/profile_v4/manage/content/all",
+      "graphic_list": "https://mp.toutiao.com/profile_v4/manage/graphic",
+      "statistics": "https://mp.toutiao.com/statistics/data",
+      "single_analysis": "https://mp.toutiao.com/profile_v4/analysis/works-single/article",
+      "draft": "https://mp.toutiao.com/profile_v4/manage/draft"
+    },
+    "editor": {
+      "title": "textarea[placeholder*=\"请输入文章标题\"]",
+      "prose_mirror": ".ProseMirror",
+      "page_texts_check": [
+        "展示封面",
+        "投放广告",
+        "作品声明",
+        "预览",
+        "定时发布",
+        "预览并发布"
+      ],
+      "button_order": [
+        "预览",
+        "定时发布",
+        "预览并发布"
+      ]
+    },
+    "switches": {
+      "ad_revenue": "投放广告赚收益",
+      "toutiao_first": "头条首发",
+      "more_revenue": "发布得更多收益",
+      "personal_view": "个人观点，仅供参考",
+      "ai_reference": "引用AI"
+    },
+    "location": {
+      "city": "上海",
+      "edit_label": ".position-cell .edit-label",
+      "position_select": ".position-select",
+      "option_css": ".byte-select-option"
+    },
+    "cover": {
+      "single_image": "单图",
+      "wrapper": ".byte-radio-wrapper",
+      "wrapper_checked": "byte-radio-wrapper-checked"
+    },
+    "schedule": {
+      "day_select": ".day-select",
+      "hour_select": ".hour-select",
+      "minute_select": ".minute-select",
+      "date_format": "MM月DD日",
+      "minute_value": "0"
+    },
+    "buttons": {
+      "schedule": "button:has-text(\"定时发布\")",
+      "schedule_in_dialog": "button:has-text(\"预览并定时发布\")",
+      "confirm": "button.publish-btn:has-text(\"定时发布\")",
+      "confirm_return": "button:has-text(\"返回编辑\")",
+      "cancel": "button:has-text(\"取消\")",
+      "final_dialog_check": [
+        "取消",
+        "预览并定时发布"
+      ]
+    },
+    "overlays": {
+      "footer_bar": ".garr-footer-publish-content",
+      "modal_wrapper": ".byte-modal-wrapper",
+      "modal_content": ".byte-modal-content",
+      "right_panel": ".byte-tabs-content-inner"
+    },
+    "pagination": {
+      "list_item": ".fake-pagination-list li",
+      "second_page_index": 2
+    },
+    "verify": {
+      "entry_url_pattern": "/graphic/articles",
+      "title_cell_css": "article-item-title a, .article-title a, [class*='title'] a",
+      "status_scheduled": [
+        "定时发布",
+        "定时"
+      ]
+    }
+  },
+  "content_policy": {
+    "account": {
+      "name": "实用生活攻略馆",
+      "description": "全品类生活攻略号，覆盖衣食住行+社会民生+生活观察",
+      "audience": {
+        "age_core": "41岁以上",
+        "gender": "男女均覆盖",
+        "language": "直白、短句、少行话",
+        "font_size": "默认（交给平台）"
+      },
+      "content_pillars": [
+        {
+          "key": "食",
+          "icon": "🍚",
+          "subdirs": [
+            "厨房技巧",
+            "备餐",
+            "省钱买菜",
+            "食物保存",
+            "厨具测评"
+          ],
+          "examples": [
+            "备餐技巧",
+            "冰箱收纳",
+            "剩菜处理"
+          ]
+        },
+        {
+          "key": "衣",
+          "icon": "👔",
+          "subdirs": [
+            "衣物护理",
+            "洗涤技巧",
+            "收纳整理",
+            "旧物改造",
+            "穿搭省钱"
+          ],
+          "examples": [
+            "瓶罐改造",
+            "旧衣改制",
+            "洗涤避坑"
+          ]
+        },
+        {
+          "key": "住",
+          "icon": "🏠",
+          "subdirs": [
+            "居家收纳",
+            "清洁技巧",
+            "装修避坑",
+            "租房维权",
+            "家电使用"
+          ],
+          "examples": [
+            "装修增项",
+            "租房押金",
+            "电器省电"
+          ]
+        },
+        {
+          "key": "行",
+          "icon": "🚗",
+          "subdirs": [
+            "出行省钱",
+            "机票攻略",
+            "通勤技巧",
+            "自驾准备"
+          ],
+          "examples": [
+            "机票什么时候买",
+            "通勤省钱"
+          ]
+        },
+        {
+          "key": "社会事件",
+          "icon": "📰",
+          "subdirs": [
+            "民生政策解读",
+            "社保医保",
+            "消费维权",
+            "辟谣防骗"
+          ],
+          "examples": [
+            "医保报销",
+            "消费退款",
+            "政策新规"
+          ]
+        },
+        {
+          "key": "生活观察",
+          "icon": "👴",
+          "subdirs": [
+            "老人行为观察",
+            "身边小事",
+            "普通人反差故事",
+            "人情世故"
+          ],
+          "examples": [
+            "老人节俭",
+            "邻里小事",
+            "职场人际"
+          ]
+        },
+        {
+          "key": "省钱理财",
+          "icon": "💰",
+          "subdirs": [
+            "省钱技巧",
+            "理财入门",
+            "副业避坑",
+            "消费观念"
+          ],
+          "examples": [
+            "工资分配",
+            "信用卡积分",
+            "副业避坑"
+          ]
+        },
+        {
+          "key": "职场成长",
+          "icon": "🧠",
+          "subdirs": [
+            "职场沟通",
+            "加薪谈判",
+            "人际边界",
+            "入职适应"
+          ],
+          "examples": [
+            "拒绝甩锅",
+            "领导批评",
+            "新入职融入"
+          ]
+        }
+      ]
+    },
+    "title": {
+      "scoring_dimensions": {
+        "body_consistency": 30,
+        "value_clarity": 20,
+        "specificity": 15,
+        "audience_match": 15,
+        "curiosity_no_clickbait": 10,
+        "difference_from_recent": 10
+      },
+      "banned_starters": [
+        "你是不是也这样",
+        "你有过吗",
+        "还不快",
+        "赶紧"
+      ],
+      "title_forms": [
+        {
+          "desc": "数字+人群/场景+结果承诺",
+          "example": "每天下班花半小时做这3件事，一年能多存2万块"
+        },
+        {
+          "desc": "身份定位+痛点+解决方案",
+          "example": "租房党别乱买收纳了！这6样东西反而越收越乱"
+        },
+        {
+          "desc": "颠覆认知+悬念钩子",
+          "example": "冰箱这5个位置放错，菜两天就烂"
+        },
+        {
+          "desc": "数字+对比+低成本高回报",
+          "example": "睡前4个习惯坚持一周，比周末补觉管用10倍"
+        }
+      ]
+    },
+    "hooks": [
+      {
+        "id": 1,
+        "name": "颠覆认知",
+        "example": "做了这么多年饭，最近才发现炒菜放盐的顺序错了"
+      },
+      {
+        "id": 2,
+        "name": "自嘲踩坑",
+        "example": "说出来不怕你们笑话，这个空调遥控器我研究了一个夏天"
+      },
+      {
+        "id": 3,
+        "name": "场景代入",
+        "example": "下午三点，你打开冰箱想拿瓶水，一股闷热扑面而来"
+      },
+      {
+        "id": 4,
+        "name": "真实数据",
+        "example": "月薪7500，一年存下5万。同事都很疑惑"
+      },
+      {
+        "id": 5,
+        "name": "悬念故事",
+        "example": "上个月我一个朋友装修，签合同时多问了4句话，省了2万块"
+      },
+      {
+        "id": 6,
+        "name": "精准痛点",
+        "example": "换了好几个枕头还是睡不好，颈椎反而越来越疼"
+      },
+      {
+        "id": 7,
+        "name": "反常识结论",
+        "example": "冰箱的冷藏室中间层是最容易串味的位置"
+      }
+    ],
+    "frameworks": [
+      {
+        "id": "A",
+        "name": "踩坑修复对比",
+        "structure": "犯错X年→幡然醒悟→正确做法→效果对比",
+        "applies_to": [
+          "省钱",
+          "厨房",
+          "收纳",
+          "家电"
+        ]
+      },
+      {
+        "id": "B",
+        "name": "场景问题解法",
+        "structure": "具体场景→困境→处理方法→结果验证",
+        "applies_to": [
+          "职场",
+          "装修",
+          "租房",
+          "医保"
+        ]
+      },
+      {
+        "id": "C",
+        "name": "认知升级",
+        "structure": "以为…→实际…→为什么→怎么做",
+        "applies_to": [
+          "社会民生",
+          "生活观察",
+          "理财"
+        ]
+      },
+      {
+        "id": "D",
+        "name": "串珠叙事",
+        "structure": "触发事件→方法1→方法2→方法3→串联收束",
+        "applies_to": [
+          "旅行",
+          "备餐",
+          "习惯",
+          "健康"
+        ]
+      }
+    ],
+    "endings": [
+      {
+        "id": 1,
+        "name": "闭环感悟",
+        "description": "回到开头场景，轻收",
+        "example": "写这篇的时候回头看，发现自己以前真能忍"
+      },
+      {
+        "id": 2,
+        "name": "数据验证",
+        "description": "用自家效果收尾",
+        "example": "去年七月三百多，今年同一套房子两百出头"
+      },
+      {
+        "id": 3,
+        "name": "延伸思考",
+        "description": "留一个值得想的角度",
+        "example": "但很多好用的方法其实是免费的"
+      },
+      {
+        "id": 4,
+        "name": "自嘲总结",
+        "description": "用自己收尾",
+        "example": "买的收纳神器有一半是智商税"
+      }
+    ],
+    "formatting": {
+      "cjk_regex": "[一-鿿㐀-䶿豈-﫿]",
+      "paragraph_split_markers": [
+        "。",
+        "！",
+        "？"
+      ],
+      "bold_count_max": 3,
+      "forbidden_writing": [
+        "然而",
+        "因此",
+        "综上",
+        "由此可见",
+        "值得注意的是",
+        "不难发现",
+        "综上所述"
+      ]
+    },
+    "authenticity": {
+      "allowed": [
+        "常见场景",
+        "普遍现象"
+      ],
+      "forbidden": [
+        "我一个朋友",
+        "老王",
+        "同事",
+        "有研究表明"
+      ],
+      "data_requirements": [
+        "数字必须来自可靠来源、页面数据或可复核计算",
+        "没有真实案例时使用'常见场景'，不得伪装亲身经历",
+        "政策、医疗、健康、金融、安全内容必须读取最新可靠来源",
+        "政策内容必须注明适用地区和生效时间",
+        "标题承诺必须在正文中完整兑现"
+      ],
+      "bans": [
+        "洗稿、拼接常识和同义改写"
+      ]
+    },
+    "forbidden_cta": [
+      "评论区说说",
+      "来评论区说说",
+      "你学会了吗",
+      "你觉得呢",
+      "评论区见",
+      "转发给需要的人",
+      "不妨试试",
+      "要不你也试试",
+      "下次试试看",
+      "你也行动起来吧",
+      "关注我",
+      "求点赞",
+      "求关注",
+      "求转发",
+      "评论区说说你的看法"
+    ],
+    "follow_structure": {
+      "required_fields": [
+        "series_id",
+        "content_pillar",
+        "target_reader",
+        "core_problem",
+        "reader_gain",
+        "next_topic"
+      ],
+      "allowed_endings": [
+        "一个自然的开放问题",
+        "下一篇将解决的问题"
+      ]
+    },
+    "image_style": {
+      "style": "写实摄影",
+      "scenes": "中国家庭生活场景",
+      "lighting": "自然光，暖色调",
+      "angle": "俯拍或平视",
+      "quality": "手机摄影质感",
+      "people": "有人气但没有人",
+      "size": "1024x1024"
+    }
+  },
+  "services": {
+    "agens": {
+      "primary": {
+        "endpoint": "https://apihub.agnes-ai.com/v1/images/generations",
+        "model": "agnes-image-2.1-flash",
+        "key": "sk-37fc8R90O1p5YQy7py4vQpmbWywfsnqg3qLJxxJg2cO8y3Ui"
+      },
+      "fallback": {
+        "endpoint": "https://api.sese-ai.com/api/generate",
+        "auth_header": "Bearer AADDCC001122",
+        "model": "z-image",
+        "aspect_ratio": "1:1",
+        "quality": "1k"
+      }
+    }
+  }
+}

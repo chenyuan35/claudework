@@ -1,0 +1,14 @@
+{
+  "run_id": null,
+  "run_date": null,
+  "article_index": 0,
+  "phase": "idle",
+  "title": null,
+  "article_hash": null,
+  "scheduled_time": null,
+  "status": "idle",
+  "retry_count": 0,
+  "last_error": null,
+  "publish_clicked": false,
+  "publish_verified": false
+}

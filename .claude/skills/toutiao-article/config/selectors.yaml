@@ -1,0 +1,74 @@
+# =============================================================================
+# 头条号自动发布 - 选择器配置 (v8.0)
+# 所有页面URL、CSS选择器、按钮文本唯一来源。
+# 页面结构变化时只改此文件，不修改SKILL.md或脚本。
+# =============================================================================
+
+pages:
+  publish: "https://mp.toutiao.com/profile_v4/graphic/publish"
+  content_list: "https://mp.toutiao.com/profile_v4/manage/content/all"
+  graphic_list: "https://mp.toutiao.com/profile_v4/manage/graphic"
+  statistics: "https://mp.toutiao.com/statistics/data"
+  single_analysis: "https://mp.toutiao.com/profile_v4/analysis/works-single/article"
+  draft: "https://mp.toutiao.com/profile_v4/manage/draft"
+
+editor:
+  title: 'textarea[placeholder*="请输入文章标题"]'
+  prose_mirror: ".ProseMirror"
+  page_texts_check:
+    - "展示封面"
+    - "投放广告"
+    - "作品声明"
+    - "预览"
+    - "定时发布"
+    - "预览并发布"
+  button_order: ["预览", "定时发布", "预览并发布"]
+
+switches: &switches
+  ad_revenue: "投放广告赚收益"
+  toutiao_first: "头条首发"
+  more_revenue: "发布得更多收益"
+  personal_view: "个人观点，仅供参考"
+  ai_reference: "引用AI"
+
+location:
+  city: "上海"
+  edit_label: ".position-cell .edit-label"
+  position_select: ".position-select"
+  option_css: ".byte-select-option"
+
+cover:
+  single_image: "单图"
+  wrapper: ".byte-radio-wrapper"
+  wrapper_checked: "byte-radio-wrapper-checked"
+
+schedule:
+  day_select: ".day-select"
+  hour_select: ".hour-select"
+  minute_select: ".minute-select"
+  date_format: "MM月DD日"
+  minute_value: "0"
+
+buttons:
+  schedule: 'button:has-text("定时发布")'
+  schedule_in_dialog: 'button:has-text("预览并定时发布")'
+  confirm: 'button.publish-btn:has-text("定时发布")'
+  confirm_return: 'button:has-text("返回编辑")'
+  cancel: 'button:has-text("取消")'
+  final_dialog_check: ["取消", "预览并定时发布"]
+
+overlays:
+  footer_bar: ".garr-footer-publish-content"
+  modal_wrapper: ".byte-modal-wrapper"
+  modal_content: ".byte-modal-content"
+  right_panel: ".byte-tabs-content-inner"
+
+pagination:
+  list_item: ".fake-pagination-list li"
+  second_page_index: 2
+
+# 作品管理列表核验
+verify:
+  entry_url_pattern: "/graphic/articles"
+  title_cell_css: "article-item-title a, .article-title a, [class*='title'] a"
+  status_scheduled: ["定时发布", "定时"]

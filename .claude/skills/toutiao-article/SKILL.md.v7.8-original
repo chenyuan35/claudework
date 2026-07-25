@@ -1,0 +1,1127 @@
+---
+name: toutiao-article
+description: 今日头条(头条号)全品类生活攻略文章自动定时发布。每日2篇，Agens配图，排版硬闸。v7.7
+exec_mode: strict_linear
+---
+
+# 今日头条 · 生活攻略类文章定时发布（v7.7 — Agens 配图管线 + 排版硬闸）
+
+🚨 第一原则：读者视角 > 一切。 每一段话写完后问自己：读者看完这段得到什么？如果答案是"没有实际帮助"或"只是在凑字数"——删掉。不写"看起来有用但读完没收获"的废话。不写只有自己懂的行话。标题承诺了什么，正文必须兑现。读者刷头条是来找答案的，不是来被你教育的。
+
+线性执行，不可跳跃。 Phase 0 → Phase 1 → Phase 2 → §32。每 Phase 的 OUTPUT 是下一 Phase 的 INPUT。缺少上一 Phase 的输出文件 → 停在当前 Phase。
+
+每 Phase 结束时产出指定文件。 文件不存在或内容为空 → Phase 自检不通过。
+Phase 自检不通过 → 退回上一步修正，不自欺跳过。 不编造、不估算、不跳过。
+
+禁止使用任何 API 操作（包括 save-xhr）。 save-xhr（/mp/agw/article/publish）调用后会在账号中创建一篇新草稿。所有操作必须通过 UI 完成。UI 定时成功标志是 URL 跳转到 /graphic/articles，不需要获取 pgc_id。
+
+字数 ≥3000。 正文原始字数不低于3000字。头条攻略类文章需要足够的信息量和案例支撑才能让读者有获得感，短文章完读率高但收藏和转发率低，长文才是沉淀粉丝的基础。每段有信息密度，不凑字数但也不能偷工减料。
+
+🚨 XHR 定时发布已废弃。 timer-publish.js / XHR timer-publish 不携带 UI 开关状态（广告/首发/收益/观点声明/配图）。所有设置必须在 UI 完成后，点击页面「定时发布」按钮走 UI 弹窗流程。
+
+🚨 禁止制造草稿。 正文填入发布页后必须走完定时流发布，不得中途弃页。任何原因中断（报错/中断/重启）导致发布页有未发布内容时，必须清除正文/标题再离开页面，否则头条自动保存为草稿。
+
+🚨 正文分段写入，不嵌长字符串。 browser_evaluate 的函数字符串会截断超过 ~300 字符的字符串字面量。browser_run_code_unsafe 无此限制（NodeJS 上下文），可用 await page.evaluate((html) => { pm.innerHTML = html; }, longString) 传递长内容。推荐用 browser_run_code_unsafe 分 3-4 段写入，每段不超过 1000 字符。写入后立即核验字数，字数不对（明显偏低）不得继续下一步操作。
+
+## 🚨 账号定位与内容策略
+
+账号名称：实用生活攻略馆 — 全品类生活攻略号，覆盖衣食住行+社会民生+生活观察。
+
+### 内容覆盖范围
+
+本账号不限单一方向，从生活攻略角度切入以下所有领域：
+
+| 大类 | 具体方向 | 示例选题 |
+|------|----------|----------|
+| 🍚 食 | 厨房技巧、备餐、省钱买菜、食物保存、厨具测评 | 备餐技巧/冰箱收纳/剩菜处理 |
+| 👔 衣 | 衣物护理、洗涤技巧、收纳整理、旧物改造、穿搭省钱 | 瓶罐改造/旧衣改制/洗涤避坑 |
+| 🏠 住 | 居家收纳、清洁技巧、装修避坑、租房维权、家电使用 | 装修增项/租房押金/电器省电 |
+| 🚗 行 | 出行省钱、机票攻略、通勤技巧、自驾准备 | 机票什么时候买/通勤省钱 |
+| 📰 社会事件 | 民生政策解读、社保医保、消费维权、辟谣防骗 | 医保报销/消费退款/政策新规 |
+| 👴 生活观察 | 老人行为观察、身边小事、普通人反差故事、人情世故 | 老人节俭/邻里小事/职场人际 |
+| 💰 省钱理财 | 省钱技巧、理财入门、副业避坑、消费观念 | 工资分配/信用卡积分/副业避坑 |
+| 🧠 职场成长 | 职场沟通、加薪谈判、人际边界、入职适应 | 拒绝甩锅/领导批评/新入职融入 |
+
+### 选题三大来源（永远不愁没话题）
+
+**来源1：自身经历 + 身边观察**
+你今天遇到的事/看到的事/听到的事；你家、你朋友家、你同事家的生活场景。真实经历写出来最有共鸣。
+
+**来源2：社会热点 + 民生事件**
+社会新闻从"普通人生活攻略"角度切入。政策变化第一时间解读（社保/医保/房产/教育）。热点是壳，生活攻略是核——把热点变成对读者有用的内容。
+
+**来源3：搜索结果 + 用户需求**
+头条创作灵感/巨量算数搜趋势；评论区看读者在问什么、苦恼什么；搜索关键词看什么话题有持续需求。
+
+### 常青属性
+
+本账号所有文章均为常青内容（Evergreen Content）：不依赖时效性热点，不追新闻，不蹭短命话题。写的是"冰箱怎么收纳""装修怎么避坑""职场怎么接话"这类十年前有人搜、十年后还会有人搜的话题。即使发布时间过去半年/一年，新读者通过搜索引擎和头条算法推荐依然能找到。
+
+### 尾流效应
+
+常青内容的尾流量远大于首日流量：头条算法对生活攻略类的推荐周期长，非新闻类文章可能在发布后2-4周仍被推荐给新用户。搜索流量（头条内搜索 + 外部搜索）持续积累——有人搜"冰箱收纳"就可能会翻到本账号的文章。每篇都值得用心写，它会一直为你工作。
+
+## PHASE 0：硬性去重（不可跳过，必须先执行）
+
+执行时机：每次启动本技能、写任何内容之前。必须先到已发布列表页提取所有已发布标题。
+
+**步骤**
+1. 导航到作品管理/已发布内容页 https://mp.toutiao.com/profile_v4/manage/content/all
+2. evaluate 提取所有可见文章标题到数组 titles[]
+3. 比对规则：
+   - 待发布标题与 titles[] 中任一元素完全匹配 → 禁止发布，退回修正
+   - 待发布标题关键词与 titles[] 中某元素高度重叠（同一事件/同一模型名/同一主题）→ 禁止发布，退回修正
+   - 重复 → 中止上一步骤，退回修正
+
+**铁律**
+- 每次启动技能必须先执行此事。不做就去写内容 = 流程违规。
+- 不依赖记忆或历史记录——必须实时从页面提取。
+
+## PHASE 0 · 数据调研
+
+⚠️ 入口动作（第一条指令）：确保 data/ 目录存在且为空
+
+```
+mkdir -p data && rm -f data/*.json
+```
+
+data/ 是轮次工作目录，不保留上一次的残留文件。清空后才开始。
+
+第一条浏览器指令：
+
+```
+browser_navigate('https://mp.toutiao.com/statistics/data')
+```
+
+在写任何文章之前，必须先打开统计页。打不开 → 走统计页等价来源：去「作品管理」页面（profile_v4/manage/content/all）看展现/阅读/评论数据，或「作品数据-单篇」（profile_v4/analysis/works-single/article）看完整表格。两份都不行 → 退回 Phase 0 入口，检查网络/登录状态后重试。
+
+### Step 0.1 — 拉账号数据
+
+从统计页逐篇阅读最近发布的文章，记录阅读量、展现量、评论量。整理后写入文件。
+
+**OUTPUT 文件：** `data/account_data.json`
+
+```json
+{
+  "articles": [
+    {
+      "title": "...",
+      "published_at": "2026-06-28",
+      "impressions": 480,
+      "reads": 10,
+      "comments": 2,
+      "direction": "生活技巧"
+    }
+  ],
+  "high_performance_directions": ["方向A", "方向B"],
+  "low_performance_patterns": ["标题啰嗦", "无配图"],
+  "readable_titles": ["标题A", "标题B"]
+}
+```
+
+必须产出，不得编造。 统计页看不到的字段留空，不估算。
+
+### Step 0.2 — 看最近 6 篇已发布（避重）
+
+```
+browser_navigate('https://mp.toutiao.com/profile_v4/manage/graphic')
+```
+
+翻最近 6 篇已发布文章，记标题关键词。不要全部遍历，不要记到技能里。
+
+**OUTPUT 文件：** `data/published_list.json`
+
+```json
+{
+  "articles": [{"title": "...", "keywords": ["..."]}],
+  "blocked_keywords": ["关键词A", "关键词B"]
+}
+```
+
+### Step 0.3 — 同赛道研究（WebSearch 海外来源）
+
+不要从头条推荐流搜索（内容质量低、算法主导）。改为从海外优质平台搜索高流量生活攻略文章。
+
+用 WebSearch 搜索 ≥3 组与账号定位相关的关键词。每组搜到目标文章后，用 WebFetch 读取原文，每篇按以下模板逐项记录，不得笼统概括。
+
+**关键词方向**
+
+| 账号定位方向 | 搜索关键词组合 |
+|---|---|
+| 生活技巧/省钱 | site.com life hacks that save money OR site.com life hacks frugal |
+| 居家收纳/清洁 | site.com home organization hacks OR site.com cleaning tips |
+| 职场沟通 | site.com workplace communication tips OR site.com how to talk to boss |
+| 消费理财 | site.com frugal living tips OR site |
+| 副业指南 | site.com side hustle tips OR site.com passive income |
+
+**提取模板（必须逐篇填满以下每项）**
+
+| 字段 | 含义 | 示例 |
+|---|---|---|
+| 标题 | 原文标题 | "10 Life Hacks That Will Save You $500 a Month" |
+| 标题结构 | 标题的句式和钩子类型 | 数字+结果承诺+场景 |
+| 开头写法 | 前 3 句话怎么写的 | 用一个具体生活场景切入 |
+| 开头钩子类型 | 叙事/数据/冲突/反问 | 数据钩子（用具体金额） |
+| 每段信息密度 | 平均每段几个新信息 | 每段 2-3 个新信息点 |
+| 机制解释深度 | 是否解释了"为什么有效" | 解释了心理账户、习惯回路 |
+| 案例嵌入方式 | 案例在文章中的位置和作用 | 开头引子+中段验证 |
+| 段落平均数 | 全文大约多少段 | 20-30 段 |
+| 可模仿点 | 本文最值得学的一个写法 | 用具体数字做每段小标题 |
+
+**⛔ 提取后自动核验（写入文件前执行）：**
+逐篇核对 competitor_notes.json 中的 opening 字段。如果未包含双引号原文且未标注['页面受限']或['AI概括']，发现即修正。同一篇目下多处标记不规范则整篇标记为 "quality": "low"。
+
+核验通过后再写入文件。
+
+**OUTPUT 文件：** `data/competitor_notes.json`
+
+```json
+{
+  "searches": [
+    {
+      "keyword": "...",
+      "articles": [
+        {
+          "title": "...",
+          "title_structure": "数字+结果承诺",
+          "opening": "原文前3句",
+          "hook_type": "数据/叙事",
+          "info_density": "每段2-3个新信息",
+          "mechanism_depth": "解释了XX机制",
+          "example_style": "贯穿式真实案例",
+          "paragraph_count": 25,
+          "takeaway": "用数字做每段小标题"
+        }
+      ]
+    }
+  ],
+  "reusable_patterns": [
+    "标题结构：数字+结果承诺+场景",
+    "开头：用具体数字做钩子，不用反问句",
+    "正文每段先抛观点，再用案例验证，最后给方法",
+    "每个方法必须说明'为什么有效'的机制"
+  ],
+  "must_avoid": [
+    "开头用'你是不是也这样'类反问句（模板化）",
+    "只说'做X'不说'为什么X有效'（信息密度为零）",
+    "纯列表式123结构无叙事（头条读者不吃）",
+    "泛泛建议无具体案例（读完等于没读）"
+  ]
+}
+```
+
+### Phase 0 自检
+
+- [ ] data/account_data.json 存在且非空
+- [ ] data/published_list.json 存在且非空
+- [ ] data/competitor_notes.json 存在且非空
+
+三项全部满足 → 进入 Phase 1。缺任一项 → 退回上一步修正，不自欺跳过。
+
+## PHASE 1 · 选题策划
+
+**INPUT：** Phase 0 的三个 JSON 文件
+
+⚠️ 入口强制检查（防跳步）：
+1. Read data/account_data.json — 文件不存在或为空 → 退回 Phase 0 重做
+2. Read data/published_list.json — 文件不存在或为空 → 退回 Phase 0 重做
+3. Read data/competitor_notes.json — 文件不存在或为空 → 退回 Phase 0 重做
+
+三项全存在再继续。不可编造。
+
+### Step 1.1 — 定方向
+
+读取 account_data.json 的 high_performance_directions，加 1-2 个新方向（来自第 0.3 步），合并 ≥4 个方向。
+
+### Step 1.2 — 定 2 主题（当日2篇）
+
+⚠️ 每日动态策划： 每天早上先看前一天已发布文章的数据（展现/阅读/CTR），据此调今日选题。不提前批量策划。
+
+每主题 8 字段，填入文件：标题、方向、痛点、目标读者、内容角度、避重说明、定时时间、数据依据
+
+**OUTPUT 文件：** `data/topics.json`
+
+```json
+{
+  "articles": [
+    {
+      "id": 1,
+      "title": "...",
+      "direction": "生活技巧",
+      "pain_point": "具体场景",
+      "target_reader": "谁",
+      "angle": "本文切入点",
+      "avoidance_note": "与已发布XX篇不重复",
+      "scheduled_time": "2026-07-05 08:00",
+      "data_basis": "来自 account_data 高表现方向"
+    }
+  ]
+}
+```
+
+### Step 1.3 — 判重
+
+逐篇与 published_list.json 中的 blocked_keywords 比对。重复 → 改标题，不行 → 换主题。不改完不进入下一步。
+
+### Phase 1 自检
+
+- [ ] data/topics.json 存在且 2 篇
+- [ ] 2 篇方向覆盖 ≥2 个方向
+- [ ] 无 AI 相关标题/角度
+- [ ] 与 published_list.json 无重复
+
+全部满足 → 进入 Phase 2。缺任一项 → 退回 Step 1.1。
+
+## PHASE 2 · 逐篇执行
+
+**INPUT：** data/topics.json（2 篇主题）
+**OUTPUT：** data/status-table.json（更新到 2 篇全部 ui_scheduled）
+
+⚠️ 入口强制检查（防跳步）
+1. Read data/account_data.json — 文件不存在或为空 → 退回 Phase 0 重做
+2. Read data/published_list.json — 文件不存在或为空 → 退回 Phase 0 重做
+3. Read data/competitor_notes.json — 文件不存在或为空 → 退回 Phase 0 重做
+4. Read data/topics.json — 不满足 2 篇或内容为空 → 退回 Phase 1 重做
+
+四项全存在、读取出内容后再继续。不可编造。
+
+### 执行前确认
+
+- [ ] data/account_data.json 存在
+- [ ] data/published_list.json 存在
+- [ ] data/competitor_notes.json 存在
+- [ ] data/topics.json 存在且 2 篇
+
+### Timeline 每日连续发布（06:00执行，每篇截取 scheduled_time 为 08:00 或 20:00）
+
+操作流程全部自包含在 SKILL.md 中，不依赖外部脚本文件。直接使用下方「逐篇模板」的完整代码执行。
+
+### 逐篇模板（精确可执行代码 + 日期预处理）
+
+每篇执行前，先从 data/topics.json 读取当前篇目的 scheduled_time，提取日期格式化为 MM月DD日，小时提取为纯数字。示例："scheduled_time": "2026-07-05 08:00" → date = "07月05日", hour = "8"；"scheduled_time": "2026-07-05 20:00" → hour = "20"。替代下方代码中的 {date} 和 {hour}。
+
+每篇执行时，将下方代码逐段复制到对应 MCP 工具中执行。所有选择器均为固定坐标，不可猜测替换。
+
+### Step 1 — 打开发布页
+
+```
+MCP: browser_navigate('https://mp.toutiao.com/profile_v4/graphic/publish')
+```
+
+→ 页面签名检查（执行以下 evaluate 脚本，全部通过才继续）
+
+```javascript
+// 页面签名可执行检测
+var sigCheck = await page.evaluate(function() {
+  var r = { ok: true, fails: [] };
+  // 1. URL
+  if (!location.href.includes('/profile_v4/graphic/publish')) { r.ok=false; r.fails.push('URL不匹配'); }
+  // 2. ProseMirror
+  if (!document.querySelector('.ProseMirror')) { r.ok=false; r.fails.push('.ProseMirror不存在'); }
+  // 3-8. DOM文本检查
+  var texts = ['展示封面','投放广告','作品声明','预览','定时发布','预览并发布'];
+  texts.forEach(function(t) {
+    if (!document.body.innerText.includes(t)) { r.ok=false; r.fails.push('缺少文本:'+t); }
+  });
+  // 9. 按钮顺序
+  var btns = document.querySelectorAll('button');
+  var order = [];
+  btns.forEach(function(b) { var t=b.textContent.trim(); if(t==='预览'||t==='定时发布'||t==='预览并发布') order.push(t); });
+  var expected = ['预览','定时发布','预览并发布'];
+  for (var i=0;i<expected.length;i++) { if (order[i] !== expected[i]) { r.ok=false; r.fails.push('按钮顺序错误'); break; } }
+  return r;
+});
+if (!sigCheck.ok) { throw new Error('PAGE_SIG_FAILED: ' + sigCheck.fails.join(', ')); }
+console.log('✅ 页面签名通过');
+```
+
+### Step 1.5 — 生成正文（≥3000字 · 强制段落模板 · 禁止句式硬闸）
+
+**第1步：查上一篇的钩子/框架/结尾类型**
+
+Read data/status-table.json（或 memory 中的上一轮记录），提取上一篇的 hook_type / narrative_framework / ending_type。
+本篇必须选不同的。同类型 → 重新选，不进入生成。
+
+**第2步：执行正文生成（使用下方强制模板）**
+
+根据 topics.json 当前篇目的标题/角度/direction/pain_point，用以下模板生成 body_html。
+
+⚠️ 本模板为可执行 prompt——必须逐行遵循，不能当参考资料。最终产出是 HTML 字符串保存在 body_html 变量中。
+
+```
+【强制段落结构模板】
+
+全文字数 ≥3000 汉字。
+全文段落总数 18-25 段（非纯文字段落计入总数）。
+「呼吸点」指：短段≤30字 / 金句单独段 / 单句改问段 / 图中断。每3段纯文字之后必须放1个呼吸点。
+「段」指 <p>...</p>。
+每段150-250汉字，不超过350字。无超长段。
+
+===== 段落配比（严格执行） =====
+长段（150-250字）占 ~50%
+中段（60-150字）占 ~30%
+短段（15-60字）占 ~20%
+每300字埋1个反常识/金句/亮点。
+每段≥2个信息点（数字/机制/案例/步骤）。
+
+===== 全文结构（5段式） =====
+
+【段1-2】开头钩子
+- 开头前50字必须有钩子（7种之一）。不能铺垫、不能渲染气氛。
+- 直接抛出场景/数据/颠覆认知/自嘲/故事/痛点/反常识。
+- 第1段≤100字。第2段（可选）过渡，≤150字。
+
+【段3-7】叙事主体（选定的叙事框架）
+- 框架A/C/D：3-4个方法自然衔接，方法间用短段或金句过渡。
+- 框架B：问题→解法→验证→通用化。
+- 每个方法按【观点句1句→机制解释1-2句→案例2-3句→操作2-3句】展开。
+- 每个方法必须：
+  - 至少有1个具体案例（"我一个朋友""我一个同事"）
+  - 至少有1句"为什么有效"的机制解释
+  - 方法的段落末尾1句暗示"还有更好的"
+
+【段8-12】正文中间呼吸区
+- 每3段纯文字后必须插入：
+  - 极短段（≤30字）如"你可能觉得——这能有用吗？"
+  - 或金句单独段
+  - 或短过渡段
+- 禁止连续5段没有呼吸点。
+
+【段13-16】深化/验证/延伸
+- 基于选定的框架，展开延伸：
+  - 数据验证：用具体数字说明效果
+  - 或个人体验深化
+  - 或延伸应用到其他场景
+- 此部分至少1个具体案例。
+
+【段17-18】结尾（4种之一，连续两篇不同类型）
+- ❌ 绝对禁止：'来评论区说说''你学会了吗''你觉得呢''评论区见''转发给需要的人'
+- ✅ 允许的4种：
+  1. 闭环感悟型 — 回到开头故事/场景，轻收
+  2. 数据验证型 — 用自家效果收尾
+  3. 延伸思考型 — 留一个值得想的角度
+  4. 自嘲总结型 — 用自己收尾
+- 结尾不能在200字以上，1-2段自然收束。
+
+===== 配图位标记（必须） =====
+
+正文中必须嵌入配图标记，位置规则：
+- 第1张图在前3段内（钩子后立即跟）
+- 之后每4-5段1张图
+- 最后3段不能有图（结尾清洁）
+- 全文配图 4-6 张（18-25段文章）
+
+配图标记格式（直接一个 <p> 段）：
+<p>【配图：写实摄影风格，中国家庭[场景]，[关键物品/动作]，[视角]，自然光，暖色调】</p>
+
+描述文字从周围 2-3 段的内容提取核心元素。示例：
+<p>【配图：写实摄影风格，中国家庭厨房台面，切好的蔬菜整齐排列在案板上，俯拍，自然光】</p>
+```
+
+**第3步：产出前自检（硬核，不过不进入 Step 2）**
+
+1. body_html.replace(/<[^>]+>/g,'').length ≥ 3000
+2. body_html 中无 '来评论区说说' & '你学会了吗' & '你觉得呢' & '评论区见' & '转发给需要的人'
+3. 每个 <p> 内容的汉字数 ≤350（分解各段逐一检查）
+4. 总段数 18-25 段（含配图标记段 <p>【配图：...】</p>）
+5. 配图标记数 4-6 个（匹配【配图：】的出现次数）
+6. 【配图：】不在最后3段内（文末清洁）
+7. 匹配选定的 hook_type（前50字看钩子模式）
+8. 匹配选定的 ending_type（最后200字看收束方式）
+
+任一项不通过 → 不写正文，调整 prompt 重新生成。
+
+**第4步：保存**
+
+确认通过后，body_html 存入内存供 Step 2 使用。
+
+⚠️ 2026-07-06 教训：每段写满150-250字，不缩短字数
+⚠️ 2026-07-13 教训：标题必须用公式+开头必须有钩子
+⚠️ 2026-07-14 教训：钩子/框架/结尾连续两篇必须不同
+⚠️ 2026-07-15 教训：结尾禁止"来评论区说说"；每3段必须有一个呼吸点
+
+### Step 1.6 — Agens 配图生成（在 Bash 中执行，替换 body_html 中的配图标记为真实图片）
+
+【前置条件】
+body_html 已通过第3步自检，内含 4-6 个【配图：描述文字】标记。
+
+【执行流程】
+
+Agens API：POST https://apihub.agnes-ai.com/v1/images/generations
+模型：agnes-image-2.1-flash
+Key（硬编码）：sk-37fc8R90O1p5YQy7py4vQpmbWywfsnqg3qLJxxJg2cO8y3Ui
+
+1. 从 body_html 提取所有【配图：XXX】的描述文本 → 配图列表 prompts[]
+2. 对每个 prompt，按顺序执行（每张图约 16s）：
+
+```bash
+curl -s -X POST https://apihub.agnes-ai.com/v1/images/generations \
+  -H "Authorization: Bearer sk-37fc8R90O1p5YQy7py4vQpmbWywfsnqg3qLJxxJg2cO8y3Ui" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"agnes-image-2.1-flash","prompt":"'$prompt'","n":1}'
+```
+
+响应：{"data":[{"url":"https://platform-outputs.agnes-ai.space/images/t2i/xxx.png"}]}
+
+将 URL 保存到 data/agens_meta.json，格式：
+{"images":[{"prompt":"...","url":"https://...","id":1}]}
+
+3. 用真实 URL 替换 body_html 中的【配图：XXX】标记：
+   body_html = body_html.replace('<p>【配图：' + desc + '】</p>', '<p><img src="' + url + '" /></p>')
+
+4. 验证：替换后 body_html 中的 img src 应为 4-6 个，【配图：】应为 0 个
+5. 如果 Agens API 返回错误：使用 fallback 描述文字继续。如果连续 2 次失败 → 跳过配图标记（保留空 <p> 段落），不影响正文发布
+
+【超时设置】每张图 curl timeout=60s，全部 6 张图总超时 300s
+
+### Step 2 — 全自动设置（在 browser_run_code_unsafe 中执行）
+
+```javascript
+// ★ 固定坐标：[标题输入框]
+await page.locator('textarea[placeholder*="请输入文章标题"]').fill('{title}');
+
+// ★ 2026-07-06 修复：标题写入后核验字数≤30（头条限制2-30字，超限会导致定时弹窗无法打开）
+var titleLen = await page.evaluate(function() {
+  var tb = document.querySelector('textarea[placeholder*="请输入文章标题"]');
+  return tb ? tb.value.length : 0;
+});
+if (titleLen > 30) {
+  throw new Error('TITLE_TOO_LONG: 标题' + titleLen + '字，超过30字限制，需缩短后重试');
+}
+
+// ★ 固定坐标：[正文编辑器]
+await page.evaluate(function(html) {
+  var pm = document.querySelector('.ProseMirror');
+  pm.innerHTML = html;
+  pm.dispatchEvent(new Event('input', {bubbles: true}));
+}, '{body_html}');
+
+// ★ 固定坐标：[内容建议标签] + [AI配图缩略图]
+await page.locator('text=内容建议').first().click();
+await page.waitForTimeout(2000);
+try {
+  await page.locator('.advise-item-recommend ul li').first().click({ force: true });
+} catch(e) {
+  await page.locator('ul li').filter({ has: page.locator('img') }).first().click({ force: true });
+}
+await page.waitForTimeout(2000);
+
+// ★ 2026-07-06 修复：配图增量>1 时删除多余（头条 AI 配图偶尔会一次插入2张）
+var imgCount = await page.evaluate(function() {
+  var pm = document.querySelector('.ProseMirror');
+  return pm ? pm.querySelectorAll('img').length : 0;
+});
+if (imgCount > 1) {
+  await page.evaluate(function() {
+    var pm = document.querySelector('.ProseMirror');
+    var imgs = pm.querySelectorAll('img');
+    for (var i = imgs.length - 1; i >= 1; i--) { imgs[i].parentElement.removeChild(imgs[i]); }
+    pm.dispatchEvent(new Event('input', {bubbles: true}));
+  });
+}
+
+// ★ 固定坐标：[底部遮罩移除] — .garr-footer-publish-content 会拦截所有 click
+await page.evaluate(function() {
+  var o = document.querySelector('.garr-footer-publish-content');
+  if (o) o.remove();
+});
+await page.waitForTimeout(500);
+
+// ★ 固定坐标：[底部开关] — 2026-07-14修复：用 evaluate 直接查 input.checked 再 force click
+async function ensureSwitch(page, label) {
+  var isChecked = await page.evaluate(function(targetLabel) {
+    var checks = document.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+    for (var i = 0; i < checks.length; i++) {
+      var p = checks[i].parentElement;
+      for (var j = 0; j < 5; j++) {
+        if (!p) break;
+        if (p.textContent && p.textContent.includes(targetLabel)) {
+          return checks[i].checked;
+        }
+        p = p.parentElement;
+      }
+    }
+    return false;
+  }, label);
+  if (isChecked) { console.log(label + ': 已勾'); return; }
+  try {
+    await page.locator('text=' + label).click({ force: true });
+  } catch(e) {
+    await page.evaluate(function(targetLabel) {
+      var checks = document.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+      for (var i = 0; i < checks.length; i++) {
+        var p = checks[i].parentElement;
+        for (var j = 0; j < 5; j++) {
+          if (!p) break;
+          if (p.textContent && p.textContent.includes(targetLabel)) {
+            if (!checks[i].checked) checks[i].click();
+            return;
+          }
+          p = p.parentElement;
+        }
+      }
+    }, label);
+  }
+}
+
+await ensureSwitch(page, '投放广告赚收益');
+await page.waitForTimeout(300);
+await ensureSwitch(page, '头条首发');
+await page.waitForTimeout(300);
+await ensureSwitch(page, '发布得更多收益');
+await page.waitForTimeout(300);
+await ensureSwitch(page, '个人观点，仅供参考');
+await page.waitForTimeout(300);
+
+// ★ 引用AI反勾选（同样用 input.checked 检测）
+var aiChecked = await page.evaluate(function() {
+  var checks = document.querySelectorAll('input[type="checkbox"]');
+  for (var i = 0; i < checks.length; i++) {
+    var p = checks[i].parentElement;
+    for (var j = 0; j < 5; j++) {
+      if (!p) break;
+      if (p.textContent && p.textContent.includes('引用AI')) { return checks[i].checked; }
+      p = p.parentElement;
+    }
+  }
+  return false;
+});
+if (aiChecked) {
+  await page.evaluate(function() {
+    var checks = document.querySelectorAll('input[type="checkbox"]');
+    for (var i = 0; i < checks.length; i++) {
+      var p = checks[i].parentElement;
+      for (var j = 0; j < 5; j++) {
+        if (!p) break;
+        if (p.textContent && p.textContent.includes('引用AI')) {
+          checks[i].click();
+          return;
+        }
+        p = p.parentElement;
+      }
+    }
+  });
+}
+
+// ★ 内容核验：字数低于3000 → 抛出异常要求重新生成
+// ★ v7.6 新增：禁止句式检测 + 段落长度爆破 + 呼吸点检测
+var contentCheck = await page.evaluate(function() {
+  var pm = document.querySelector('.ProseMirror');
+  if (!pm) return { error: 'ProseMirror not found' };
+  var text = pm.innerText || '';
+  var charCount = text.replace(/\\s/g, '').length;
+
+  // ★ v7.6：禁止句式检测（硬闸）
+  var forbiddenPatterns = ['来评论区说说', '你学会了吗', '你觉得呢', '评论区见', '转发给需要的人'];
+  var foundForbidden = [];
+  forbiddenPatterns.forEach(function(p) {
+    if (text.includes(p)) foundForbidden.push(p);
+  });
+
+  // ★ v7.6：逐段长度检测
+  var paras = pm.querySelectorAll('p');
+  var longParas = [];
+  var paraLengths = [];
+  for (var i = 0; i < paras.length; i++) {
+    var pt = (paras[i].textContent || '').trim();
+    var pl = pt.length;
+    paraLengths.push(pl);
+    if (pl > 350) longParas.push('#'+(i+1)+':'+pl+'字');
+  }
+
+  // ★ v7.6：呼吸点检测（连续纯文字段 >3 则预警，≥5 拦截）
+  var consecutiveTextRuns = 0;
+  var maxTextRun = 0;
+  for (var j = 0; j < paras.length; j++) {
+    var hasImg = paras[j].querySelector('img');
+    var pLen = (paras[j].textContent || '').trim().length;
+    if (!hasImg && pLen > 30) {
+      consecutiveTextRuns++;
+      if (consecutiveTextRuns > maxTextRun) maxTextRun = consecutiveTextRuns;
+    } else {
+      consecutiveTextRuns = 0;
+    }
+  }
+
+  var caseKeywords = ['比如', '例如', '我一个朋友', '我一个同事', '我有个', '我一位', '案例', '真实', '之前有个'];
+  var caseCount = 0;
+  caseKeywords.forEach(function(kw) {
+    var idx = -1;
+    while ((idx = text.indexOf(kw, idx + 1)) !== -1) caseCount++;
+  });
+  var hasNarrative = /我\\s*(曾经|有一次|去年|上个月|之前|试过|发现|遇到|看到|记得)/.test(text);
+  var hasMechanism = /(为什么|因为|原理|机制|有效|原因在于|背后的道理|核心原因|关键在)/.test(text);
+
+  // ★ v7.5 升级：开头钩子检测
+  var first100 = text.substring(0, 100);
+  var hookDisruptive = /(一直做错|一直以为|才发现|才知道|原来.|没想到|这么多年|白.*了|做反了)/.test(first100);
+  var hookSelfMock = /(说出来|不怕.*笑|我自己|干了.*蠢事|以前.*以为|犯过|闹过|笑死)/.test(first100);
+  var hookScene = /(下午|早上|晚上|半夜|周五|周末|打开|走进|看到|闻到|推门|开门)/.test(first100) && /(你|你家|你的)/.test(first100);
+  var hookNumbers = /\d+[块元天分个%]/.test(first100);
+  var hookStory = /(我一个朋友|我一个同事|有个朋友|有个同事|上个月|去年.*朋友|身边|认识一个)/.test(first100);
+  var hookPain = /(烦死|头疼|崩溃|忍不了|受不了|烦躁|焦虑|郁闷|愁|烦)/.test(first100);
+  var hookContra = /(不一定|未必|反而是|恰恰|正好相反|其实不|不是.*而是|真正.*是)/.test(first100);
+  var hasOpeningHook = hookDisruptive || hookSelfMock || hookScene || hookNumbers || hookStory || hookPain || hookContra;
+  var detectedHookType = hookDisruptive ? '颠覆认知' : hookSelfMock ? '自嘲踩坑' : hookScene ? '场景代入' : hookNumbers ? '数据钩子' : hookStory ? '悬念故事' : hookPain ? '精准痛点' : hookContra ? '反常识结论' : '未知';
+
+  return {
+    charCount: charCount, caseCount: caseCount,
+    hasNarrative: hasNarrative, hasMechanism: hasMechanism,
+    hasOpeningHook: hasOpeningHook, detectedHookType: detectedHookType,
+    forbiddenFound: foundForbidden,
+    langParas: longParas,
+    paraCount: paras.length,
+    maxTextRun: maxTextRun
+  };
+});
+console.log('📊 内容核验:', JSON.stringify(contentCheck));
+
+if (contentCheck.error) { throw new Error('内容核验失败: ' + contentCheck.error); }
+if (contentCheck.charCount < 3000) {
+  throw new Error('❌ 字数不达标(' + contentCheck.charCount + ')，退回 Step 1.5 重新生成正文');
+}
+if (contentCheck.forbiddenFound && contentCheck.forbiddenFound.length > 0) {
+  throw new Error('❌ 包含禁止句式: ' + contentCheck.forbiddenFound.join(', ') + '，退回 Step 1.5 重写结尾');
+}
+if (contentCheck.langParas && contentCheck.langParas.length > 0) {
+  throw new Error('❌ 超长段(' + contentCheck.langParas.length + '段): ' + contentCheck.langParas.join('; ') + '，退回 Step 1.5 拆分段落');
+}
+if (contentCheck.maxTextRun >= 5) {
+  throw new Error('❌ 连续' + contentCheck.maxTextRun + '段无呼吸点（纯文字堆砌），退回 Step 1.5 插入短段/图/金句');
+}
+if (contentCheck.caseCount < 2) {
+  console.warn('⚠️ 案例数不足2个，当前:' + contentCheck.caseCount + '，记录到 status-table');
+}
+if (!contentCheck.hasOpeningHook) {
+  console.warn('⚠️ 开头50字可能无钩子，检查后记录到 status-table');
+}
+```
+
+### Step 3 — 🚨 禁止调用任何 API（save-xhr 会创建重复草稿）
+
+直接进入 UI 定时流程。
+
+### Step 4 — 🚨 UI 定时发布（精确代码，不可修改）
+
+```javascript
+// ★ 固定坐标：[定时发布]
+await page.locator('button:has-text("定时发布")').click();
+await page.waitForTimeout(2000);
+
+// ★ 固定坐标：[定时发布弹窗] — 弹窗检测
+var hasDialog = await page.evaluate(function() {
+  var btns = document.querySelectorAll('button');
+  var c=false, p=false;
+  for(var i=0;i<btns.length;i++){var t=btns[i].textContent;if(t.includes('取消'))c=true;if(t.includes('预览并定时发布'))p=true;}
+  return c&&p;
+});
+if (!hasDialog) {
+  await page.waitForTimeout(3000);
+  await page.evaluate(function() {
+    var btns = document.querySelectorAll('button');
+    for(var i=0;i<btns.length;i++){if(btns[i].textContent.trim()==='定时发布'){btns[i].click();break;}}
+  });
+  await page.waitForTimeout(2000);
+  var hasDialog2 = await page.evaluate(function() {
+    var btns = document.querySelectorAll('button');
+    var c=false, p=false;
+    for(var i=0;i<btns.length;i++){var t=btns[i].textContent;if(t.includes('取消'))c=true;if(t.includes('预览并定时发布'))p=true;}
+    return c&&p;
+  });
+  if (!hasDialog2) { throw new Error('TIMER_DIALOG_FAILED: 定时弹窗未弹出'); }
+}
+
+// ★ 固定坐标：[日期选择器]
+await page.locator('.day-select').click();
+await page.waitForTimeout(500);
+await page.locator('.byte-select-option').filter({ hasText: '{date}' }).click();
+await page.waitForTimeout(500);
+
+// ★ 固定坐标：[小时选择器]
+await page.locator('.hour-select').click();
+await page.waitForTimeout(500);
+await page.locator('.byte-select-option').filter({ hasText: '{hour}' }).click();
+await page.waitForTimeout(500);
+
+// ★ 固定坐标：[分钟选择器]（必设 0）
+await page.locator('.minute-select').click();
+await page.waitForTimeout(500);
+var minuteOptions = await page.locator('.byte-select-option').filter({ hasText: '0' }).count();
+if (minuteOptions > 0) {
+  await page.locator('.byte-select-option').filter({ hasText: '0' }).first().click();
+  await page.waitForTimeout(500);
+}
+
+// ★ 固定坐标：[预览并定时发布（弹窗内）]
+await page.evaluate(function() {
+  var buttons = document.querySelectorAll('[role="dialog"] button');
+  for(var i=0;i<buttons.length;i++){
+    if(buttons[i].textContent.includes('预览并定时发布')){
+      ['mousedown','mouseup','click'].forEach(function(type){
+        buttons[i].dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}));
+      });
+      break;
+    }
+  }
+});
+await page.waitForTimeout(2000);
+
+// ★ 固定坐标：[定时发布（最终确认）] — publish-btn primary
+await page.locator('button.publish-btn.byte-btn-primary').waitFor({timeout: 10000});
+await page.waitForTimeout(1000);
+await page.locator('button.publish-btn.byte-btn-primary').click();
+await page.waitForTimeout(3000);
+// → URL 跳转到 /graphic/articles ✅ 成功
+```
+
+### Step 5 — 更新 status-table.json
+
+```json
+{
+  "id": N,
+  "title": "...",
+  "direction": "...",
+  "scheduled_time": "2026-07-XX HH:00",
+  "status": "ui_scheduled",
+  "publish_method": "UI两步流程",
+  "body_chars": NNNN,
+  "image_count": 1,
+  "switches": "广告/首发/收益/观点 全部已勾",
+  "hook_type": "颠覆认知/自嘲踩坑/场景代入/数据钩子/悬念故事/精准痛点/反常识结论（选一）",
+  "narrative_framework": "踩坑修复/场景解法/认知升级/串珠叙事（选一）",
+  "ending_type": "闭环感悟/数据验证/延伸思考/自嘲总结（选一）"
+}
+```
+
+### Step 6 — 下一篇（重复 Step 1-5）
+
+当日 2 篇全部 ui_scheduled → 进入 §32 每日加固。任一篇未完成 → 停止当天流程，修复后重新执行。
+
+## 固定点位坐标总表
+
+所有表格统一为 4 列：元素 → CSS 定位 → Playwright 操作 → ⚠️ 注意。代码块不再内嵌选择器。
+
+### 页面入口
+
+| 用途 | URL |
+|---|---|
+| 统计页 | https://mp.toutiao.com/statistics/data |
+| 作品管理列表 | https://mp.toutiao.com/profile_v4/manage/graphic |
+| 创作-已发布 | https://mp.toutiao.com/profile_v4/manage/content/all |
+| 作品数据-单篇 | https://mp.toutiao.com/profile_v4/analysis/works-single/article |
+| 发布页 | https://mp.toutiao.com/profile_v4/graphic/publish |
+| 草稿箱（仅查看） | https://mp.toutiao.com/profile_v4/manage/draft |
+
+### 发布页·编辑器区
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 标题输入框 | textarea[placeholder*="请输入文章标题"] | locator.fill('{title}') | ⚡ 不能用 JS el.value + dispatchEvent，byte-component 不响应 |
+| 正文编辑器 | .ProseMirror | el.innerHTML = html + dispatchEvent(new Event('input')) | 赋值后必须 dispatch input 事件触发状态更新 |
+
+### 发布页·右侧面板
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 内容建议标签 | text=内容建议 | locator('text=内容建议').first().click() | 必须先点击激活，AI 配图才出现 |
+| AI配图缩略图 | .advise-item-recommend ul li（首选） | locator('.advise-item-recommend ul li').first().click({ force: true }) | ⚡ 必须点 <li> 父元素，点 <img> 会开新标签页 |
+| AI 创作标签 | text=AI 创作 | locator('text=AI 创作').click() | 可选 |
+
+### 发布页·封面设置
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 单图 | text=单图 | 默认已选中，确认即可 | 正文第一张图自动成为封面 |
+| 三图 | text=三图 | 不选 | - |
+| 无封面 | text=无封面 | 不选 | - |
+| 封面预览图 | 封面预览区域 | 检查非空白即可 | 单图模式下不走弹窗 |
+
+### 发布页·底部开关
+
+⚡ 操作前先执行：document.querySelector('.garr-footer-publish-content')?.remove()
+⚡ 检测方法：遍历 input 元素读取 .checked 属性
+⚡ 点击兜底：Playwright locator.click 失败时退化为 input.click()
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 投放广告赚收益 | text=投放广告赚收益 | ensureSwitch(page, '投放广告赚收益') | force + input.click() 兜底 |
+| 头条首发 | text=头条首发 | ensureSwitch(page, '头条首发') | 同上 |
+| 发布得更多收益 | text=发布得更多收益 | ensureSwitch(page, '发布得更多收益') | 同上 |
+| 个人观点，仅供参考 | text=个人观点，仅供参考 | ensureSwitch(page, '个人观点，仅供参考') | 同上 |
+| 引用AI | text=引用AI | aiChecked 检测 → input.click() | 禁止勾选，检测到勾选则取消 |
+| 取材网络 | text=取材网络 | locator('text=取材网络').click({ force: true }) | 可选 |
+| 虚构演绎，故事经历 | text=虚构演绎，故事经历 | locator('text=虚构演绎，故事经历').click({ force: true }) | 不选 |
+| 投资观点，仅供参考 | text=投资观点，仅供参考 | locator('text=投资观点，仅供参考').click({ force: true }) | 不选 |
+| 健康医疗分享 | text=健康医疗分享，仅供参考 | locator('text=健康医疗分享，仅供参考').click({ force: true }) | 不选 |
+
+### 发布页·发文设置折叠区
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 展开发文设置 | text=发文设置 | locator('text=发文设置').click() | 新版默认已展开，折叠时才需操作 |
+| 收起（回到顶部） | text=回到顶部 | locator('text=回到顶部').click() | 展开后发文设置变为回到顶部 |
+
+### 发布页·底部按钮
+
+正常状态（进入发布页时）按钮顺序：预览 → 定时发布 → 预览并发布。顺序不对 → 停止操作。
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 预览 | button:has-text('预览') | 不点 | - |
+| 定时发布 | button:has-text('定时发布') | locator('button:has-text("定时发布")').click() | ✅ 点击弹出定时弹窗 |
+| 预览并发布 | button:has-text('预览并发布') | 🚫 禁止点击 | 与定时发布紧邻，点错直接发布 |
+
+预览后状态（点弹窗预览并定时发布后）：
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 返回编辑 | button:has-text('返回编辑') | 不点 | class：byte-btn-default.publish-btn |
+| 定时发布（最终确认） | button.publish-btn.byte-btn-primary | locator('button.publish-btn.byte-btn-primary').click() | ✅ 此按钮才是真正提交定时发布 |
+
+### 🚨 定时发布弹窗
+
+| 元素 | CSS 定位 | Playwright 操作 | ⚠️ 注意 |
+|---|---|---|---|
+| 弹窗触发 | button:has-text("定时发布") | 底部 locator.click() | - |
+| 弹窗开启标志 | 底部按钮变为取消和预览并定时发布 | evaluate 检测按钮文本变化 | ⚡ 不要检查 [role="dialog"] |
+| 日期选择器 | .day-select | 展开 → 点选项：locator('.byte-select-option').filter({ hasText: '{date}' }) | ⚡ 元素可能 not visible，失败时用 dispatchEvent |
+| 小时选择器 | .hour-select | 展开 → 点选项：locator('.byte-select-option').filter({ hasText: '{hour}' }) | ⚡ {hour} 纯数字（8 或 20），选项文本是 8 不是 08 |
+| 分钟选择器 | .minute-select | 展开 → 点选项：locator('.byte-select-option').filter({ hasText: '0' }).first() | ⚡ 必须设为 0 |
+| 预览并定时发布（弹窗内） | [role="dialog"] button:has-text('预览并定时发布') | dispatchEvent（mouse+click） | ⚡ 此按钮只打开预览浮层，不直接发布 |
+| 取消 | button:has-text('取消') | 不点 | - |
+
+两步确认流程：弹窗 dispatchEvent「预览并定时发布」→ 预览浮层打开 → 底部按钮变为【返回编辑】【定时发布】→ 点击【定时发布（最终确认）】→ URL 跳转到 /graphic/articles → ✅ 成功
+
+### 遮罩/遮挡层
+
+| 层 | CSS 选择器 | 影响范围 | 应对 |
+|---|---|---|---|
+| 底部固定栏遮罩 | .garr-footer-publish-content | 遮挡底部所有 checkbox/radio 和按钮 | 全部 { force: true } |
+| 弹窗遮罩 | .byte-modal-wrapper / .byte-modal-content | 拦截 Playwright click 到弹窗内元素 | 弹窗内用 dispatchEvent |
+| 右侧面板遮罩 | .byte-tabs-content-inner | 拦截 AI 配图点击 | 用 { force: true } |
+
+### 页面签名检查（打开发布页后验证）
+
+browser_navigate('https://mp.toutiao.com/profile_v4/graphic/publish') → 验证全部：
+
+- [ ] URL 含 /profile_v4/graphic/publish
+- [ ] .ProseMirror 存在
+- [ ] DOM 含文本 "展示封面"
+- [ ] DOM 含文本 "投放广告"
+- [ ] DOM 含文本 "作品声明"
+- [ ] DOM 含文本 "预览"
+- [ ] DOM 含文本 "定时发布"
+- [ ] DOM 含文本 "预览并发布"
+- [ ] 按钮顺序正确：预览 → 定时发布 → 预览并发布
+
+任一缺失 → 页面加载失败或 DOM 结构变更，刷新或检查后重试。
+
+## 📱 手机端排版铁律（强制执行 · 不可跳过）
+
+排版不是好看不好看的问题——一段文字在手机屏上糊了 = 读者在那一秒就划走了。以下每一条都有具体的字数/行数/间隔标准。
+
+### 铁律一：视觉呼吸法则（3-4段必须有一个呼吸点）
+
+读者在手机上看了3段纯文字后会产生视觉疲劳。每3-4段纯文字之后，必须插入以下任一种呼吸点：
+
+| 呼吸点类型 | 要求 | 示例 |
+|---|---|---|
+| 配图 | 每500-800字1张，图在段落之间 | 遮光帘介绍完 → [图片] → 穿堂风介绍 |
+| 极短段落（≤30字） | 1句，单独成段，调节节奏 | "你可能觉得——关窗拉窗帘，那房间不会闷吗？" |
+| 金句单独成段 | 把一句反常识/亮点拿出来单独成段 | "很多热根本不是'不开空调不行'的热" |
+| 分段话术转换 | 用"说实话""老实说""说白了"开头短段 | "说实话，我以前也觉得这些东西没用。" |
+
+核验：从头扫描正文，找到连续纯文字段（不含图/无短段）数量 ≥ 5 → ⚠️ 视觉疲劳，必须插入呼吸点。
+
+### 铁律二：段落长度黄金比例
+
+不能全是中长段，也不能全是短段。正文的段落长度分布应符合：
+
+| 类型 | 字数 | 占比 | 作用 |
+|---|---|---|---|
+| 长段 | 100-150字 | ~50% | 承载方法、机制、案例的核心内容 |
+| 中段 | 60-100字 | ~30% | 过渡、铺垫、承接 |
+| 短段 | 15-60字 | ~20% | 制造节奏、小标题、金句冲击 |
+
+禁止：
+- ❌ 任何段落超过150字（手机窄屏读长句视线跳行）
+- ❌ 连续3段以上都以"我"开头（句式单调）
+- ❌ 连续3段都在同一字数区间
+
+### 铁律三：段首词不重复规则
+
+连续段落不能以相同词开头。检查相邻3段的段首词。连续3段"我"开头 → 改掉其中一段（加"但""不过""后来""结果""老实说"等转折词/语气词开头）
+
+### 铁律四：图文锚点规则
+
+| 规则 | 标准 | 违反后果 |
+|---|---|---|
+| 配图间隔 | 每4-5段1张，全文4-6张 | ≤3张→视觉疲劳，退回重排 |
+| 图片位置 | 图在段落之间，不在段中，不堆在文末 | - |
+| 第1张图位置 | 前3段内（钩子后立即跟） | 开头无图=降低留人率 |
+| 文末无图 | 最后3段不能有图 | 文末堆图=收尾无力 |
+| 图前后文字 | 图前至少1段引文，图后至少1段承接 | 孤立无援的图不插 |
+
+### 铁律五：造句约束
+
+| 指标 | 标准 | 手机端原因 |
+|---|---|---|
+| 单句长度 | ≤40字 | 超长句在手机上换行后视线跳行 |
+| 复合句 | 一句话不超过2个逗号 | 手机窄屏读长句=晕 |
+| 转折词使用 | 每段至少1个"但/不过/结果/后来/其实"类转折 | 没有转折=平铺直叙 |
+| 段末留钩子 | 每个方法段的末尾暗示"还有更好的" | 驱动力让读者往下划 |
+
+## 📚 头条爆文方法论（基于实测数据分析）
+
+### 一、标题公式（决定点击率，占流量50%权重）
+
+核心原则：头条用户平均3秒决定点不点。标题必须让读者"一眼看到价值"。
+
+**公式1：数字 + 人群/场景 + 结果承诺**
+- ❌ 差：节省生活开支的方法
+- ✅ 好：每天下班花半小时做这3件事，一年能多存2万块
+- 奇数比偶数更显真实（3>4, 5>6, 7>8）
+- 数字 ≤2 个/标题，放在前部确保完整展示
+- 具体金额（"省200块"）比抽象概念（"省钱"）有效3倍
+
+**公式2：身份定位 + 痛点 + 解决方案**
+- ❌ 差：家里东西太多怎么办
+- ✅ 好：租房党别乱买收纳了！这6样东西反而越收越乱
+- 用"你、千万别、还在、难怪、真相"拉近读者距离
+- 身份词：租房党/打工人/宝妈/30岁后/新手
+
+**公式3：颠覆认知 + 悬念钩子**
+- ❌ 差：冰箱使用小技巧
+- ✅ 好：冰箱这5个位置放错，菜两天就烂（本账号实测4379曝光）
+
+**公式4：数字 + 对比 + 低成本高回报**
+- ❌ 差：睡前做得对身体好
+- ✅ 好：睡前4个习惯坚持一周，比周末补觉管用10倍
+
+**标题硬性要求**
+
+| 指标 | 标准 | 来源 |
+|---|---|---|
+| 长度 | 16-28汉字（超过28字在信息流被截断） | 头条爆文分析 |
+| 数字 | 至少1个数字（带数字标题CTR高30%+） | 多篇文章交叉验证 |
+| 身份词 | 至少1个身份/场景词（"你、租房、打工人"） | 头条爆文分析 |
+| 价值承诺 | 读完能得到什么（方法/省钱/避坑） | 流量密码规律 |
+| ❌ 禁止 | "你是不是也这样""你有过吗"类反问开头 | 本账号数据验证 |
+
+### 二、开头50字（定生死——完读率第一道关卡）
+
+核心原则：读者只有50字/3秒决定是否继续。前50字必须有钩子。
+
+🚨 强制轮换规则（不可跳过）：连续两篇不得使用同一钩子类型。写作前必须先查上一篇用的哪种钩子，选不同的。
+
+**7种爆款开头钩子（按效果排序）**
+
+| # | 类型 | 写法 | 示例 | 适用场景 |
+|---|---|---|---|---|
+| 1 | 颠覆认知钩子 | 推翻日常认知 | "做了这么多年饭，最近才发现，炒菜放盐的顺序错了" | 厨房/技巧/收纳 |
+| 2 | 自嘲踩坑钩子 | 先承认自己蠢 | "说出来不怕你们笑话，这个空调遥控器我研究了一个夏天" | 家电/生活/省钱 |
+| 3 | 场景代入钩子 | 让读者看见画面 | "下午三点，你打开冰箱想拿瓶水，一股闷热扑面而来" | 居家/电器/装修 |
+| 4 | 真实数据钩子 | 具体数字开场 | "月薪7500，一年存下5万。同事都很疑惑" | 理财/省钱/副业 |
+| 5 | 悬念故事钩子 | 用人/事件带入 | "上个月我一个朋友装修，签合同时多问了4句话，省了2万块" | 装修/买房/职场 |
+| 6 | 精准痛点钩子 | 直击日常烦恼 | "换了好几个枕头还是睡不好，颈椎反而越来越疼" | 家居/健康/睡眠 |
+| 7 | 反常识结论钩子 | 先抛匪夷所思的结论 | "冰箱的冷藏室中间层是最容易串味的位置" | 厨房/冰箱/收纳 |
+
+**开头自检三问（写作后必须核验）**
+1. 前50字有没有钩子？——没有钩子 = 读者秒划走
+2. 有没有铺垫废话？——"随着生活水平的提高"开头的，直接删
+3. 读者看完第一句想知道第二句吗？——不知道就重写
+
+**禁止的开头类型**
+- ❌ "随着……" "在……的今天" — 模板化，3秒内不被淘汰
+- ❌ "你是不是也这样……" — 头条用户看腻了反问句
+- ❌ 纯理论/概念引入 — 不给读者立即价值
+- ❌ 大段场景描写超过100字不进入主题 — 手机屏小，读者等不了
+
+### 三、正文结构（完读率决定能否被二次推流）
+
+核心原则：头条算法根据"完读率"决定是否扩大推流。完读率≥50%才有二次推荐。
+
+🚨 叙事框架轮换规则：上篇用过某框架，下篇必须换。
+
+**4种叙事框架**
+
+**框架A：踩坑→修复→对比（适合省钱/厨房/收纳/家电）**
+开头：我犯了一个保持了X年的错误 → 发现：直到有一天幡然醒悟 → 修复：换成正确做法 → 对比：效果天差地别 → 延伸：如果你也在做同样的事，赶紧改
+
+**框架B：场景→问题→解法→验证（适合职场/装修/租房/医保）**
+开头：一个具体场景 → 问题：你遇到的困境是什么 → 解法：我是怎么处理的 → 验证：结果如何、为什么有效 → 通用化：这个方法还能用在哪些场景
+
+**框架C：认知升级法（适合社会民生/生活观察/理财）**
+开头：大多数人（包括我）以为……（常见的认知误区）→ 真相：但实际上…… → 为什么：为什么大家都有这个误区 → 怎么做：知道了真相以后应该怎么做 → 价值：做到以后能带来什么改变
+
+**框架D：串珠叙事法（适合旅行/备餐/生活习惯/健康）**
+开头：一个触发事件 → 方法1：自然引出 → 方法2：顺便带出 → 方法3：第三个在不经意间出现 → 收束：串联成完整方案
+
+### 四、结尾设计（让读者自然想说话，不是被要求说话）
+
+🚨 强制轮换规则：连续两篇同类型结尾 = 模式化。
+
+**4种自然收尾方式**
+
+| # | 类型 | 写法 | 示例 | 适用 |
+|---|---|---|---|---|
+| 1 | 闭环感悟型 | 回到开头的故事/场景，首尾呼应 | "写这篇的时候回头看，发现自己以前真能忍" | 省钱/避坑/厨房 |
+| 2 | 数据验证型 | 用自家效果收尾，让结果说话 | "去年七月电费三百多，今年七月同一套房子，两百出头" | 电费/省钱/收纳 |
+| 3 | 延伸思考型 | 留下一个值得想了再想的角度 | "但很多好用的方法其实是免费的。只是没人告诉我们" | 任何方向 |
+| 4 | 自嘲总结型 | 用自己收尾，不居高临下 | "买的收纳神器有一半是智商税" | 收纳/消费/家居 |
+
+**❌ 禁止的结尾类型**
+- "来评论区说说你的方法……" — 生硬诱导
+- "你学会了吗？" — 说教感
+- "你觉得呢？评论区见" — 模板化互动
+- "转发给需要的人" — 社交施压
+
+## 🎨 Agens 配图管线
+
+### API 配置
+
+```json
+{
+  "endpoint": "https://apihub.agnes-ai.com/v1/images/generations",
+  "model": "agnes-image-2.1-flash",
+  "key": "sk-37fc8R90O1p5YQy7py4vQpmbWywfsnqg3qLJxxJg2cO8y3Ui",
+  "fallback_model": "agnes-image-2.0-flash"
+}
+```
+
+### 配图规则
+
+每篇配图 4-6 张（18-25段文章），按以下节奏：
+
+| 位置 | 时机 | 图片作用 |
+|---|---|---|
+| 第1张 | 钩子段落后的第2-3段 | 让读者看到"文章配了图，不是纯文字墙" |
+| 第2-3张 | 正文中部，每4-5段1张 | 打断视觉疲劳，作为呼吸点 |
+| 第4-5张 | 深化/验证区域，每3-4段1张 | 增强可信度（效果对比图/场景图） |
+| ❌ 最后3段 | 不能有图 | 结尾清洁 |
+
+### 配图风格规范（必须统一）
+
+- 写实摄影风格（不要插画/漫画/3D渲染）
+- 中国家庭生活场景（厨房/卧室/客厅/超市）
+- 自然光，暖色调
+- 俯拍或平视视角
+- 手机摄影质感（不要专业影棚感）
+- 有人气但没有人（美食/场景图，不要模特）
+- 尺寸：1024x1024（正方形，移动端友好）
+
+### 提示词模板
+
+从图片周围的 2-3 段内容提取关键词，填入以下框架：
+写实摄影风格，中国家庭[场景]，[关键物品/动作]，[视角]，自然光，暖色调，手机摄影质感，生活化
+
+## 操作故障处理
+
+| 条件 | 现象 | 处理 |
+|---|---|---|
+| 3014 | 审核中 | timeline 列表获取不到最新文章时 → 3x5s 重试，仍取不到 → 标记"待手动确认"后继续下一篇 |
+| 定时弹窗无响应 | 点击定时发布按钮后弹窗不出现 | 等待3s → evaluate 直接点定时按钮 → 仍不出现 → 刷新发布页重来，正文标题保留 |
+| 定时发布分钟错误 | 已设置日期/小时，未设分钟 | 用 .minute-select 选择器设置分钟为0 |
+| 操作卡住 | 连续2次同一操作无效果 | 退出当前步骤重进，或刷新发布页 |
+| 发布页DOM异常 | 按钮顺序不对/关键元素缺失 | 记录变化，更新固定坐标表后重试 |
+
