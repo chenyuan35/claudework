@@ -87,6 +87,25 @@ class TestStateRecovery(unittest.TestCase):
         self.assertEqual(s["phase"], "2")
         self.assertEqual(s["article_index"], 1)
 
+    def test_phase3_without_run_date_requires_clear(self):
+        """phase=3 即使 run_date 为空也不能误判为新任务"""
+        state.update_state(phase="3", status="phase3_done", run_date=None)
+        action, _ = state.detect_recovery()
+        self.assertEqual(action, "clear_and_restart")
+
+    def test_phase1_does_not_require_editor_clear(self):
+        """Phase 1 尚未写编辑器，不应误判脏编辑器"""
+        state.update_state(phase="1", status="phase1_done")
+        action, _ = state.detect_recovery()
+        self.assertEqual(action, "new")
+
+    def test_reset_removes_dynamic_fields(self):
+        state.update_state(last_image_dir="runtime/images/x", extra="stale")
+        state.reset_to_idle()
+        s = state.load_state()
+        self.assertNotIn("last_image_dir", s)
+        self.assertNotIn("extra", s)
+
     def test_dirty_editor_detection(self):
         """脏编辑器检测"""
         self.assertFalse(state.detect_dirty_editor(""))

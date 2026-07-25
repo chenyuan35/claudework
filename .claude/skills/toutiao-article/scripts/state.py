@@ -4,7 +4,7 @@
 启动时检测未完成任务并决定恢复策略。
 阈值从 config/thresholds.yaml 读取。
 """
-import json, os, hashlib, copy
+import json, os, hashlib, copy, tempfile
 from scripts.lib.config_loader import get_thresholds
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +20,21 @@ def _history_max():
 
 def _path(f):
     return f
+
+def _atomic_json_write(path: str, data):
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
 
 def default_state():
     return {
@@ -44,9 +59,7 @@ def load_state():
         return json.load(f)
 
 def save_state(s):
-    os.makedirs(RUNTIME, exist_ok=True)
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(s, f, ensure_ascii=False, indent=2)
+    _atomic_json_write(STATE_FILE, s)
 
 def update_state(**kwargs):
     s = load_state()
@@ -54,12 +67,7 @@ def update_state(**kwargs):
     save_state(s)
 
 def reset_to_idle():
-    s = load_state()
-    for k, v in default_state().items():
-        s[k] = v
-    s["status"] = "idle"
-    s["phase"] = "idle"
-    save_state(s)
+    save_state(default_state())
 
 def article_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
@@ -74,9 +82,7 @@ def append_history(entry: dict):
     h = load_history()
     h.append(entry)
     h = h[-_history_max():]  # keep last N per config
-    os.makedirs(RUNTIME, exist_ok=True)
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(h, f, ensure_ascii=False, indent=2)
+    _atomic_json_write(HISTORY_FILE, h)
 
 def load_metrics():
     if not os.path.exists(METRICS_FILE):
@@ -85,9 +91,7 @@ def load_metrics():
         return json.load(f)
 
 def save_metrics(m):
-    os.makedirs(RUNTIME, exist_ok=True)
-    with open(METRICS_FILE, "w", encoding="utf-8") as f:
-        json.dump(m, f, ensure_ascii=False, indent=2)
+    _atomic_json_write(METRICS_FILE, m)
 
 def detect_recovery():
     """
@@ -96,12 +100,12 @@ def detect_recovery():
     """
     state = load_state()
     if state.get("publish_verified"):
-        return ("continue_next", "上一篇已确认发布，直接继续下一篇")
+        return ("continue_next", "上一篇已确认发布，先执行Phase 7幂等落盘，再继续下一篇")
     if state.get("publish_clicked") and not state.get("publish_verified"):
         return ("verify_publish", f"已点击发布但未确认，标题={state.get('title')}")
-    if state.get("phase") not in ("idle", "done") and state.get("run_date"):
-        return ("clear_and_restart", "编辑器有内容但未点击发布，清除后从Phase 2重做")
-    return ("new", "无遗留任务，开始新流程")
+    if str(state.get("phase")) in ("2", "3", "4", "5", "6", "7"):
+        return ("clear_and_restart", f"状态不一致: phase={state.get('phase')}, status={state.get('status')}，清除后从Phase 2重做")
+    return ("new", "无遗留编辑器任务，继续正常流程")
 
 def detect_dirty_editor(pm_html: str) -> bool:
     """正文写入编辑器后检测是否为脏状态"""

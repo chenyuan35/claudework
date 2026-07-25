@@ -15,15 +15,12 @@ class TestArticleValidator(unittest.TestCase):
     def test_qualified_passes(self):
         """合格正文通过（至少1500汉字）"""
         paras = []
-        # 55 single-sentence + 5 headings + 5 double-sentence paragraphs
+        # 55正文，每10段插入小标题，末尾再接5个双句段
         for i in range(55):
             paras.append(f"第{i+1}段正文示例内容，读者可以从这段获得有用生活小技巧和经验。")
-        paras.append("小标题一")
-        paras.append("小标题二")
-        paras.append("小标题三")
-        paras.append("小标题四")
-        paras.append("小标题五")
-        for i in range(5):  # Total: 55+5+5 = 65 para, heading_count=5
+            if (i + 1) % 10 == 0:
+                paras.append(f"小标题{(i + 1) // 10}")
+        for i in range(5):
             paras.append(f"具体操作步骤第{i+1}步说明。关键点需要仔细检查避免出错。")
         html = self.get_html(paras)
         v = ArticleValidator(html)
@@ -34,13 +31,13 @@ class TestArticleValidator(unittest.TestCase):
     def test_qualified_with_headings(self):
         """带小标题的正文通过"""
         paras = []
-        for i in range(10):
+        # 6 headings × 9 body = 54 body + 6 headings + 9 intro + 1 conclusion = 70 total ✓
+        for i in range(9):
             paras.append(f"开头段落第{i+1}段示例文字，这里有一些引导读者的描述内容。")
-        # 6 headings × 10 body = 60 body + 6 headings + 10 intro + 1 conclusion = 77 total ✓
         for h in range(6):
             paras.append(f"小标题{h+1}")
-            for i in range(10):
-                paras.append(f"第{h+1}部分第{i+1}段，这里提供具体描述和实用生活小技巧经验。")
+            for i in range(9):
+                paras.append(f"第{h+1}部分第{i+1}段，这里提供具体描述和实用生活小技巧经验以及注意事项。")
         paras.append("结尾段落，总结全文内容供读者参考借鉴。")
         html = self.get_html(paras)
         v = ArticleValidator(html)
@@ -173,6 +170,29 @@ class TestArticleValidator(unittest.TestCase):
         result = v.validate()
         self.assertFalse(result["passed"])
         self.assertGreater(len(result["forbidden_cta"]), 0)
+
+    def test_forbidden_writing_fails(self):
+        """content_policy中的禁用写作词进入硬闸"""
+        paras = []
+        for i in range(55):
+            paras.append(f"正常段落第{i+1}句，因此这里继续说明实用方法。")
+        html = self.get_html(paras)
+        result = ArticleValidator(html).validate()
+        self.assertFalse(result["passed"])
+        self.assertIn("因此", result["forbidden_writing"])
+        self.assertTrue(any("forbidden_writing" in failure for failure in result["failures"]))
+
+    def test_forbidden_writing_html_entity_fails(self):
+        paras = [f"正常段落第{i+1}句，&#22240;&#27492;继续说明方法。" for i in range(55)]
+        result = ArticleValidator(self.get_html(paras)).validate()
+        self.assertIn("因此", result["forbidden_writing"])
+
+    def test_consecutive_text_paras_over_limit_fails(self):
+        paras = [f"连续正文第{i+1}段提供足够具体的生活操作方法和注意事项。" for i in range(55)]
+        result = ArticleValidator(self.get_html(paras)).validate()
+        self.assertFalse(result["passed"])
+        self.assertGreater(result["max_consecutive_text_paras"], 10)
+        self.assertTrue(any("max_consecutive_text_paras" in f for f in result["failures"]))
 
     def test_para_count_out_of_range_fails(self):
         """段数超范围失败（超过80段）"""

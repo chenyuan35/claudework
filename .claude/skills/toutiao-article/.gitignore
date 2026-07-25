@@ -1,0 +1,8 @@
+runtime/*.json
+runtime/*.txt
+runtime/images/
+.playwright-mcp/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.code-workspace

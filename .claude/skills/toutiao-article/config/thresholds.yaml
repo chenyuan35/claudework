@@ -29,6 +29,10 @@ article:
 
   # --- 图片阈值 ---
   images_required: 3               # 每篇必需图片数
+  image_min_width: 512
+  image_min_height: 512
+  image_upload_timeout_sec: 60      # 等待平台将本地blob转为CDN图片
+  image_distribution_targets_pct: [25, 50, 75]
   image_distribution_bands:        # 三档分布区间（占pm.children百分比）
     band1_min: 8
     band1_max: 30
@@ -67,8 +71,9 @@ topics:
     directions_to_select: 2         # 选前几个方向为核心
 
   # --- 热点 ---
-  hot_topic_min_score: 85          # 热点综合评分必须≥此值才能占用相邻名额
-  hot_topic_age_days_max: 3        # 超过N天的不追
+  hot_topic_min_score: 85          # 热点综合评分必须≥此值才可加分
+  hot_topic_age_days_max: 3        # 超过N天不加分
+  hot_topic_bonus_max: 5           # 仅符合账号方向时附加，不能替代主评分
 
   # --- 数据采集 ---
   fetch_recent_count: 20            # 去重采集最近N篇标题
@@ -109,12 +114,16 @@ metrics:
 
 retry:
   max_retries: 2                    # 最大重试次数（除终局错误外）
-  image_api_retries: 2              # 单个图片API重试次数
-  image_api_wait_sec: 40            # 图片API生成最低等待秒数
-  agens_max_failures: 3             # Agens连续失败N次后启用sese-ai
+  image_api_retries: 2              # Agens单图重试次数
+  image_fallback_retries: 1         # sese-ai单图重试次数
+  image_api_wait_sec: 40            # 图片API重试等待秒数
+  agens_timeout_sec: 180
+  sese_timeout_sec: 240
+  image_download_timeout_sec: 60
 
 publish:
   scheduled_times: ["06:00", "18:00"]
+  schedule_search_days: 30
   articles_per_day: 2
 
 state:

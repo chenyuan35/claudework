@@ -3,9 +3,9 @@
 输入完整HTML，输出JSON验证结果。
 阈值来自 config/thresholds.yaml，不硬编码。
 """
-import re, json, sys
+import re, json, sys, html as html_lib
 from html.parser import HTMLParser
-from scripts.lib.config_loader import get_thresholds
+from scripts.lib.config_loader import get_thresholds, get_content_policy
 
 class ArticleValidator:
     CJK_RE = re.compile(r'[一-鿿㐀-䶿豈-﫿]')
@@ -23,11 +23,14 @@ class ArticleValidator:
         self.plain_text = self._extract_text(html)
         self.paragraphs = self._extract_paragraphs(html)
         self.t = get_thresholds()["article"]
+        policy = get_content_policy()
+        self.forbidden_cta = policy.get("forbidden_cta", self.FORBIDDEN_CTA)
+        self.forbidden_writing = policy.get("formatting", {}).get("forbidden_writing", [])
 
     def _extract_text(self, html: str) -> str:
         """Strip HTML tags to get plain text"""
         tag_re = re.compile(r'<[^>]+>')
-        return tag_re.sub('', html).strip()
+        return html_lib.unescape(tag_re.sub('', html)).strip()
 
     def _extract_paragraphs(self, html: str):
         """Extract all <p> tag contents"""
@@ -102,8 +105,9 @@ class ArticleValidator:
         html_md_leaks = re.findall(r'(?<!<)>?#{1,6}\s+\S', self.html)
         md_leaks.extend(html_md_leaks)
 
-        # === 禁用CTA ===
-        found_cta = [c for c in self.FORBIDDEN_CTA if c in self.plain_text]
+        # === 禁用CTA / 写作词 ===
+        found_cta = [c for c in self.forbidden_cta if c in self.plain_text]
+        found_forbidden_writing = [c for c in self.forbidden_writing if c in self.plain_text]
 
         # === 小标题检测（<h2> <h3> <strong>段落等） ===
         heading_count = self._count_headings()
@@ -168,6 +172,11 @@ class ArticleValidator:
             checks["forbidden_cta_fail"] = True
             failures.append(f"forbidden_cta={found_cta}")
 
+        checks["forbidden_writing"] = found_forbidden_writing
+        if found_forbidden_writing:
+            checks["forbidden_writing_fail"] = True
+            failures.append(f"forbidden_writing={found_forbidden_writing}")
+
         checks["heading_count"] = heading_count
         if heading_count < self.t["heading_count_min"] or heading_count > self.t["heading_count_max"]:
             checks["heading_count_fail"] = True
@@ -184,6 +193,11 @@ class ArticleValidator:
             failures.append(f"comma_overage_paras={comma_overage}")
 
         checks["max_consecutive_text_paras"] = max_consecutive
+        if max_consecutive > self.t["consecutive_text_paras_max"]:
+            checks["max_consecutive_text_paras_fail"] = True
+            failures.append(
+                f"max_consecutive_text_paras={max_consecutive} > {self.t['consecutive_text_paras_max']}"
+            )
 
         passed = not failures
 
@@ -197,6 +211,7 @@ class ArticleValidator:
             "max_sentence_count": max_sentences,
             "single_sentence_ratio": round(single_sentence_ratio, 4),
             "forbidden_cta": found_cta,
+            "forbidden_writing": found_forbidden_writing,
             "heading_count": heading_count,
             "comma_overage_paras": comma_overage,
             "max_consecutive_text_paras": max_consecutive,
@@ -205,21 +220,24 @@ class ArticleValidator:
         }
 
     def _count_headings(self):
-        # Count paragraphs that look like small titles: short, no sentence end
-        count = 0
-        for p in self.paragraphs:
+        # Get positions of all <strong>-wrapped heading-like content
+        strong_positions = set()
+        for m in re.finditer(r'<strong>([^<]{2,30})</strong>', self.html):
+            text = m.group(1)
+            if not self.SENTENCE_END_RE.search(text):
+                strong_positions.add(m.start())
+        # Count heading-like paragraphs (<20 CJK chars, no sentence end)
+        heading_indices = set()
+        for i, p in enumerate(self.paragraphs):
             p = p.strip()
             if not p or not self.CJK_RE.search(p):
                 continue
-            # Lowercase detection for <strong> wrapped short lines
-            if re.search(r'<strong>[^<]{2,30}</strong>', self.html):
-                count += 1
-            # Short paragraphs (<30 chars, no sentence end) are headings
-            if len(p) < 30 and not self.SENTENCE_END_RE.search(p):
-                count += 1
-            # Explicit h2/h3 tags
-        count += len(re.findall(r'</?h[23]>', self.html, re.IGNORECASE))
-        return count
+            len_cjk = len(self.CJK_RE.findall(p))
+            if len_cjk < self.t["heading_char_threshold"] and not self.SENTENCE_END_RE.search(p):
+                heading_indices.add(i)
+        # Count explicit h2/h3 tags
+        explicit = len(re.findall(r'<h[23]>', self.html, re.IGNORECASE))
+        return max(len(strong_positions), len(heading_indices)) + explicit
 
     def _max_consecutive_text_paras(self):
         max_run = run = 0

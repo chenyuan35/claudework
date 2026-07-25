@@ -2,7 +2,11 @@
 头条号自动发布 - 选题评分 (v8.0)
 输入候选选题列表和方向数据，输出评分排序后的最优选题。
 """
-import json, sys
+import json, sys, os
+from datetime import datetime, date
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from scripts.lib.config_loader import get_thresholds, get_content_policy
 
 SCORE_DIMS = {
     "audience_match": 25,
@@ -12,6 +16,52 @@ SCORE_DIMS = {
     "timeliness_search": 10,
     "source_reliability": 5,
 }
+
+
+def _account_directions() -> set:
+    policy = get_content_policy()
+    account = policy.get("account", {})
+    directions = {str(x) for x in account.get("direction_ids", [])}
+    for pillar in account.get("content_pillars", []):
+        directions.add(str(pillar.get("key", "")))
+        directions.update(str(x) for x in pillar.get("subdirs", []))
+    return {d for d in directions if d}
+
+
+def _topic_matches_account(topic: dict) -> bool:
+    allowed = _account_directions()
+    values = {
+        str(topic.get("content_pillar", "")),
+        str(topic.get("direction", "")),
+        str(topic.get("subdirection", "")),
+    }
+    return bool({v for v in values if v} & allowed)
+
+
+def _hot_bonus(topic: dict) -> int:
+    """热点只在符合账号方向且达到阈值、未过期时加有限分。"""
+    cfg = get_thresholds()["topics"]
+    hot_score = topic.get("hot_score")
+    if not isinstance(hot_score, (int, float)) or hot_score < cfg["hot_topic_min_score"]:
+        return 0
+    if not _topic_matches_account(topic):
+        return 0
+
+    age_days = topic.get("hot_age_days")
+    published_at = topic.get("hot_published_at")
+    if age_days is None and not published_at:
+        return 0
+    if isinstance(age_days, (int, float)) and age_days > cfg["hot_topic_age_days_max"]:
+        return 0
+    if published_at and age_days is None:
+        try:
+            published = datetime.fromisoformat(str(published_at).replace("Z", "+00:00")).date()
+            if (date.today() - published).days > cfg["hot_topic_age_days_max"]:
+                return 0
+        except (TypeError, ValueError):
+            return 0
+
+    return min(cfg["hot_topic_bonus_max"], max(1, int(hot_score // 20)))
 
 def score_topic(topic: dict, high_performance_dirs: list, recent_titles: list) -> dict:
     """
@@ -62,6 +112,10 @@ def score_topic(topic: dict, high_performance_dirs: list, recent_titles: list) -
     sr = max(0, min(5, sr))
     breakdown["source_reliability"] = sr
     total += sr
+
+    hot_bonus = _hot_bonus(topic)
+    breakdown["account_aligned_hot_bonus"] = hot_bonus
+    total += hot_bonus
 
     return {
         **topic,

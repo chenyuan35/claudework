@@ -8,6 +8,31 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from scripts.lib.config_loader import get_thresholds
 from scripts.state import load_metrics, save_metrics, load_history
 
+DIRECTION_KEYWORDS = {
+    "seasonal_health": ["三伏天", "夏天", "季节", "养生", "湿气", "中暑", "空调病", "伏天", "暑", "秋冬"],
+    "home_energy_saving": ["电费", "省电", "费电", "电器", "耗电"],
+    "food_safety": ["饮料", "自来水", "氯味", "过期", "保鲜", "吃坏", "食品安全", "食物"],
+    "shopping_tips": ["买菜", "超市", "临期", "购物", "商品"],
+    "consumer_rights": ["被宰", "退钱", "维权", "外卖", "快递", "赔偿", "洒了", "丢了"],
+    "home_organization": ["收纳", "空间", "厨房台面", "旧物", "旧东西", "改造", "利用", "东西多", "东西再"],
+    "money_management": ["存钱", "退休金", "省钱", "花钱", "每月", "月多"],
+    "tech_daily": ["手机", "内存", "设置", "G"],
+    "workplace": ["职场", "入职", "新人", "第一周"],
+    "renovation": ["装修", "改造", "翻新"],
+    "mosquito": ["蚊子", "蚊虫", "驱蚊"],
+    "car_tips": ["开车", "汽车", "费油", "伤车"],
+    "gold_investment": ["金价", "黄金", "买金"],
+}
+
+def classify_direction(title: str, body: str = "") -> str:
+    """根据标题+正文关键词分类文章方向（不只用标题，还要读正文）"""
+    text = title + " " + body
+    for direction, keywords in DIRECTION_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text:
+                return direction
+    return "unknown"
+
 def calculate_ctr(reads, views):
     if not views or views == 0:
         return None
@@ -45,7 +70,7 @@ def build_batch_analysis(articles: list):
 
     directions = {}
     for a in articles:
-        d = a.get("direction", "unknown")
+        d = classify_direction(a.get("title", ""), a.get("body", "") or a.get("content", "") or a.get("summary", "") or "")
         if d not in directions:
             directions[d] = []
         directions[d].append(a)
@@ -103,7 +128,6 @@ def build_batch_analysis(articles: list):
     # 写入 metrics.json
     m = load_metrics()
     m["last_batch"] = batch_metrics
-    m["articles_total"] = m.get("articles_total", 0) + len(articles)
     recent = m.get("recent_batches", [])
     recent.append({"date": batch_metrics["run_date"], "articles": len(articles)})
     m["recent_batches"] = recent[-20:]  # keep last 20

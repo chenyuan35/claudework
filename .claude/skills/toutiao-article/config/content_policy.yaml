@@ -12,6 +12,20 @@ account:
     gender: "男女均覆盖"
     language: "直白、短句、少行话"
     font_size: "默认（交给平台）"
+  direction_ids:
+    - seasonal_health
+    - home_energy_saving
+    - food_safety
+    - shopping_tips
+    - consumer_rights
+    - home_organization
+    - money_management
+    - tech_daily
+    - workplace
+    - renovation
+    - mosquito
+    - car_tips
+    - gold_investment
   content_pillars:
     - key: "食"
       icon: "🍚"
@@ -200,8 +214,9 @@ follow_structure:
 image_style:
   style: "写实摄影"
   scenes: "中国家庭生活场景"
-  lighting: "自然光，暖色调"
-  angle: "俯拍或平视"
-  quality: "手机摄影质感"
-  people: "有人气但没有人"
+  lighting: "自然光，写实质感"
+  angle: "平视或偏俯拍"
+  quality: "真实像素照片质感"
+  people: "有生活痕迹但没有人"
   size: "1024x1024"
+  prompt_keywords: "realistic, photorealistic, documentary photography, natural lighting, authentic home scene"

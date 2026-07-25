@@ -76,8 +76,8 @@ class TestIntegration(unittest.TestCase):
         paras = []
         for i in range(55):
             paras.append(f"第{i+1}段正文示例内容，读者可从这段获得有用生活小技巧和经验。")
-        for h in range(5):
-            paras.append(f"小标题{h+1}")
+            if (i + 1) % 10 == 0:
+                paras.append(f"小标题{(i + 1) // 10}")
         for i in range(5):
             paras.append(f"步骤第{i+1}步说明。关键点需要仔细检查避免出错。")
         body = "".join(f"<p>{p}</p>" for p in paras)
