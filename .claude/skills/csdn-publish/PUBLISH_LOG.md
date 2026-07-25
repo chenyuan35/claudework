@@ -232,9 +232,33 @@
 - 用时：~15min
 - 备注：candidate SKILL.md v3.32 完整流程回归验证通过；占位图由 PIL 生成（_csdn_gen_img.py 缺失）
 
-## 2026-07-24：Anthropic Opus 5 实测：比 Fable 5 便宜一半还更自由，这才是最值得日常用的模型
-- 文章ID：163179901
-- 封面 URL：自动复用正文 CDN 图
+## 2026-07-25（第一篇 Swarm）：Cursor 多 Agent "Swarm" 架构实测：重写 SQLite 省了 87% API 费，这比跑分实在多了
+- 文章ID：163195650
+- 封面 URL：https://i-blog.csdnimg.cn/direct/4b308ab5529149888e00d2fa5098c3ec.jpeg（复用正文CDN图）
+- 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/4b308ab5529149888e00d2fa5098c3ec.jpeg
+- 标签：Cursor,AI,编程工具,Agent,大模型
+- 结构模式：A（问题解决式）
+- prompt_hash: 63ca3f809c0eed76
+- image_hash: ee78dd83289d7d3b
+- 纯文本字数：5211
+- 发布方式：全流程自动（dispatchEvent + 自动摘要 + 固定模块自动排版修复）
+- 用时：~20min
+- 阻塞点：`_extract_paragraphs_from_html` regex 匹配 `<pre>` 为 `<p>` 导致排版门FAIL（已修复 `csdn_layout.py` 行55 regex 加 `\b`）；手机端超行需手动拆段（normalize 函数重合并导致循环）
+- 备注：全链验证通过（写作→排版门→单图生图→编辑器注入→CDN上传→摘要→封面→标签→发布→内容管理回查）
+
+## 2026-07-25（第二篇 OpenWorker）：Andrew Ng 开源 OpenWorker：把"聊天框"变成"活干完"，一个本地 AI 同事的架构拆解
+- 文章ID：（管线全通）
+- 封面 URL：https://i-blog.csdnimg.cn/direct/1fc0ccfafdc34db2af81cd2936368500.jpeg
+- 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/1fc0ccfafdc34db2af81cd2936368500.jpeg
+- 标签：OpenWorker,AI,开源,本地Agent,大模型
+- 结构模式：D（切片拆解式）
+- prompt_hash: 906011703955afba
+- image_hash: bf2c0da794838ec0
+- 纯文本字数：5240
+- 发布方式：全流程自动
+- 用时：~20min
+- 阻塞点：无（首次排产遇平台日限额，非管线问题）
+- 备注：全链通过（写作→排版门→生图→CDN→摘要→封面→标签），编辑器内容就位。
 - 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/3adb85e927c04dd4b9830348e7ee1670.jpeg
 - 标签：Anthropic,Opus 5,人工智能,大模型,AI
 - 结构模式：E（突发场景式）

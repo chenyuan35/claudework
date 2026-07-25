@@ -52,7 +52,7 @@ def _extract_paragraphs_from_html(html: str) -> List[str]:
     """提取正文中所有 <p> 段落内容"""
     para_content = []
     # 匹配 <p> 内容（不包含块级内部标签如 ul/ol）
-    for m in re.finditer(r'<p[^>]*>(.*?)</p>', html, re.DOTALL):
+    for m in re.finditer(r'<p\b[^>]*>(.*?)</p>', html, re.DOTALL):
         content = m.group(1).strip()
         if content:
             para_content.append(content)
@@ -185,6 +185,21 @@ def normalize_csdn_html(article_html: str) -> str:
             # 如果加入后超过硬上限，不再添加
             elif would_be > PARA_HARD_MAX:
                 should_add = False
+            # 如果加入后超过手机端行数上限，不再添加
+            if current_len >= 60:  # only check once we have enough content
+                test_text = ''.join(current + [sent])
+                test_units = 0
+                for ch in test_text:
+                    if '一' <= ch <= '鿿':
+                        test_units += 1
+                    else:
+                        test_units += 0.6
+                available = 390 - 32
+                char_width = 16
+                chars_per_line = available // char_width
+                test_lines = max(1, -(-int(test_units) // chars_per_line))
+                if test_lines > 7:
+                    should_add = False
             # 如果当前段落已经达到目标上限且后续还有足够句子
             elif current_len >= PARA_TARGET_MAX and len(sentences) - i >= 2:
                 should_add = False
@@ -221,7 +236,36 @@ def normalize_csdn_html(article_html: str) -> str:
 
         result_parts.extend(new_paras)
 
-    return '\n'.join(result_parts)
+    # Post-process: split paragraphs that exceed mobile line limit
+    final_parts = []
+    for part in result_parts:
+        if part.startswith('<p>') and part.endswith('</p>'):
+            text = part[3:-4]  # strip <p> and </p>
+            plain = _html_to_plain(text)
+            units = 0
+            for ch in plain:
+                if '一' <= ch <= '鿿':
+                    units += 1
+                else:
+                    units += 0.6
+            available = 390 - 32
+            char_width = 16
+            chars_per_line = available // char_width
+            lines = max(1, -(-int(units) // chars_per_line))
+            if lines > 7:
+                # Split into two: try at a natural breakpoint
+                splits = re.split(r'(?<=[。！？，；])', text)
+                if len(splits) > 1:
+                    mid = len(splits) // 2
+                    p1 = ''.join(splits[:mid])
+                    p2 = ''.join(splits[mid:])
+                    if p1.strip() and p2.strip():
+                        final_parts.append(f'<p>{p1}</p>')
+                        final_parts.append(f'<p>{p2}</p>')
+                        continue
+        final_parts.append(part)
+
+    return '\n'.join(final_parts)
 
 
 # ═══════════════════════════════════════════════════════════════
