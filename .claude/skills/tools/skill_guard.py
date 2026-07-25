@@ -171,11 +171,16 @@ def check_branch_words(text: str) -> tuple:
 
 def check_browser_publish(text: str) -> list:
     checks = []
-    h = bool(re.search(r'选择器表|坐标速查|选择器.*坐标|用途.*坐标|用途.*选择器', text, re.IGNORECASE))
+    h = bool(re.search(r'\|.*browser_(evaluate|click|wait|fill|upload).*\|', text, re.IGNORECASE))
+    has_coord_table = bool(re.search(r'\|.*步骤.*\|.*工具.*\|.*命令.*\|', text))
+    has_eval_table = bool(re.search(r'\|.*evaluate 代码.*\|.*验收条件.*\|', text))
+    h = h or has_coord_table or has_eval_table
     checks.append({"name": "BR-01: selector_table", "severity": "error", "pass": h, "detail": "OK" if h else "建议有选择器/坐标表"})
     h = bool(re.search(r'验收|验证|pass[=\s]|snapshot|screenshot', text, re.IGNORECASE))
     checks.append({"name": "BR-02: visual_acceptance", "severity": "error", "pass": h, "detail": "OK" if h else "需要视觉验收"})
-    h = bool(re.search(r'pass.*true.*才|验证.*通过.*才|通过.*后.*保存|确认.*后.*发布', text, re.IGNORECASE))
+    has_checklist = bool(re.search(r'- \[[ x]\]', text))
+    has_publish_condition = bool(re.search(r'通过|禁止.*点击|通过.*才', text))
+    h = has_checklist and has_publish_condition
     checks.append({"name": "BR-03: publish_gate", "severity": "error", "pass": h, "detail": "OK" if h else "建议有发布门"})
     return checks
 

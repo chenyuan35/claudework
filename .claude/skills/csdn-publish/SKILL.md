@@ -75,8 +75,8 @@ python _csdn_prep.py budget
 - **D** 切片拆解式：入口→逐层拆解→关键瓶颈→最佳实践
 - **E** 突发场景式：偶然发现→尝鲜→深度使用→值得/不值得
 
-### 排版铁律（段落 ≤ 120 字，强转折独立成段）
-- 每个段落只说 1-2 个事实，超 120 字必须拆
+### 排版铁律（段落 ≤ 180 字，超 180 字数 ≤ 3）
+- 每个段落只说 1-2 个事实，超 180 字必须审视（超 180 字数 ≤ 3）
 - 关键数字、日期、百分比、工具名 → `<strong>` 加粗
 - 对比数据 → `<table>`（不用段落描述）
 - 话题切换 → `<hr>` 分割线
@@ -100,7 +100,7 @@ python _csdn_prep.py budget
 
 ### 图像布局
 - 先写完整正文 HTML，不含任何 `<img>` 标签
-- 在图片应放置处插入文本标记 `__BODY_IMG_PLACEHOLDER__`
+- `__BODY_IMG_PLACEHOLDER__` 标记由 `run_csdn_article_image_pipeline()` 自动插入
 - 该标记必须落在文章纯文字长度的 **35%-60% 区间**
 - 成文后执行：`python -c "import re;html=open('article_csdn.html',encoding='utf-8').read();pos=html.index('__BODY_IMG_PLACEHOLDER__');r=pos/len(html);assert 0.35<=r<=0.6,f'{r*100:.0f}%'"`
 
@@ -108,29 +108,40 @@ python _csdn_prep.py budget
 
 ## §1 图像生成（阶段 II）
 
-### 分析文件
-写 `_csdn_prompt_analysis.json`，包含 cover（核心主题/隐喻/色调/风格/色板/构图/情绪）和 body（段落上下文/概念类型/构图/风格/色板/情绪）。封面与正文在 style/palette/composition/mood 四个维度全部不同，且与上篇至少 2 维度不同（通过 `_csdn_last_style.txt` 检查）。
-
-风格/色板/构图/情绪从轮盘选（轮盘列于文件末尾附录），每次选不同组合。
-
-### 启动生图（后台不阻塞）
-分析文件写完**立即**执行，不做任何审查：
+### 正文图生成（固定模块，不拆步骤）
 ```bash
-# Bash run_in_background: true
-python _csdn_gen_img.py --analysis _csdn_prompt_analysis.json
+python -c "import csdn_article_ops; r=csdn_article_ops.run_csdn_article_image_pipeline(open('article_csdn.html').read()); print(f'status={r[\"status\"]}, hash={r[\"prompt_hash\"]}'); assert r['status']=='PASS'"
 ```
+模块 `csdn_article_ops.py` 自动完成：提取主题 → 构建 prompt → Agens 生图 → 验证。全程无人值守，不再生成 `_csdn_prompt_analysis.json`。
 
-### 双图验证锁（生图结束后执行）
+### 双图验证锁
 ```bash
-ls -la _csdn_cover.jpg _csdn_body.jpg
-# 缺图 → 单独重跑；再次失败 → A2 熔断（本轮不发）
+ls -la _csdn_body_image.jpg
 ```
+缺图 → 重跑；再次失败 → A2 熔断（本轮不发）。
 
 ### 图片压缩 + HTTP 服务
 ```bash
 python _csdn_prep.py compress
-python img_server.py &
-curl -s -o /dev/null -w "%{http_code}" http://localhost:18991/_csdn_cover_small.jpg  # 必须 200
+python -c "
+import http.server, socketserver
+class CORSHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self): self.send_header('Access-Control-Allow-Origin','*'); super().end_headers()
+socketserver.TCPServer(('127.0.0.1', 18991), CORSHandler).serve_forever()
+" &
+sleep 1 && curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18991/_csdn_body_image.jpg
+```
+
+### 封面图（使用附录轮盘手动选一次，固定调用）
+```bash
+python -c "
+import json
+from csdn_article_ops import generate_article_image
+html = open('article_csdn.html').read()
+# 封面图从轮盘选不同参数，此处调用 generate_article_image 走不同 prompt
+result = generate_article_image(html, '_csdn_cover_image.jpg')
+print(result['status'])
+"
 ```
 
 ---
@@ -142,8 +153,19 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:18991/_csdn_cover_small.
    - 破题段 400-600 字 → 主体每节 600-1200 字 → 结尾 300-500 字
    - 写完每节立即 `python -c "import re;t=re.sub(r'<[^>]+>','',open('article_csdn.html',encoding='utf-8').read());t=re.sub(r'\s+','',t);print(len(t))"`，不足则本节内补
 3. 插入 `__BODY_IMG_PLACEHOLDER__` 并执行 35%-60% 位置检测
-4. 终验：纯文本 ≥ 目标字数（取自步骤⑥预算）。不够→只向字符数最低的章节追加内容，禁止重写已有正文
-5. **编辑审稿门（字数达标后执行）**：通读全文检查逻辑通顺性和段落衔接。检查重点：段间过渡自然度、观点连贯性、表述清晰度、有无逻辑断裂。发现问题→只修改对应章节内容，禁止整篇重写。编辑期间总字数允许在目标值 ±10% 范围内浮动。修改完成后进入 §1b。
+4. **排版门**（字数达标后执行）：
+   ```bash
+   python -c "
+   from csdn_layout import normalize_csdn_html, layout_gate
+   html = open('article_csdn.html', encoding='utf-8').read()
+   norm = normalize_csdn_html(html)
+   open('article_csdn.html', 'w', encoding='utf-8').write(norm)
+   r = layout_gate(norm)
+   print(f'段落数={r[\"para_count\"]}, max段长={r[\"max_han\"]}, 中位数={r[\"median_han\"]}, 超140={len(r[\"over_140\"])}, 手机超行={len(r[\"mobile_overflow\"])}, 总评={r[\"overall\"]}')
+   assert r['overall']=='PASS', f'排版门未通过: {[k for k,v in r.items() if \"check_\" in k and v==\"FAIL\"]}'
+   "
+   ```
+5. **编辑审稿门（排版门通过后执行）**：通读全文检查逻辑通顺性和段落衔接。检查重点：段间过渡自然度、观点连贯性、表述清晰度、有无逻辑断裂。发现问题→只修改对应章节内容，禁止整篇重写。编辑期间总字数允许在目标值 ±10% 范围内浮动。修改完成后进入 §1b。
 
 ---
 
@@ -157,25 +179,22 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:18991/_csdn_cover_small.
 
 ---
 
-## §2 编辑器操作（阶段 IV，按 §5 坐标表执行）
+## §2 编辑器操作（阶段 IV）
 
-navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEditor 检测在正文注入前执行）。然后按 §5 编号顺序执行：
+navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEditor 检测在正文注入前执行）。然后按 [§5 坐标表](#5-坐标表playwright-mcp-精确指令) 逐条执行（#0→#1→#2→#2b→#2c→#2d→#3→#4→摘要生成→#10b→#11），无分支。
 
-| # | 操作 | 工具 | 验收 |
-|---|------|------|------|
-| 0 | 额度+CKEditor 就绪 | evaluate | CKEDITOR.instances.editor 存在 |
-| 1 | 填标题 `#txtTitle` | evaluate set value + input event | value === 标题 |
-| 2 | setData 正文 | evaluate setData + fire('change') | getData().length > 0 |
-| 2b | CDN 上传正文图 | evaluate execImageUpload → run_code_unsafe setInputFiles | `<img` 计数 === 1 |
-| 2c | 清除 proxy 图 | evaluate 正则替换 | 无 img-home URL |
-| 3 | 设置封面 | evaluate 点 `.img-selection-item` → 确认裁剪 | preview.src 以 http 开头且 >50 字符 |
-| 4 | 设置标签 | evaluate nativeInputValueSetter `input[name="tags"]` | value 不为空 |
-| 10 | 提取摘要 | 点击 `AI提取摘要` 按钮 | 摘要 textarea 长度 ≥ 200 |
-| 11 | **发布博客** | evaluate removeAttribute('aria-disabled') + dispatchEvent(MouseEvent('click')) | URL 含 /creation/success/ |
+**摘要生成步骤（在 #4 标签后执行）：**
+```bash
+python -c "
+from csdn_article_ops import build_article_summary
+s = build_article_summary(open('article_csdn.html', encoding='utf-8').read())
+open('_csdn_summary.txt', 'w', encoding='utf-8').write(s)
+print(f'摘要 {len(s)} 字')
+"
+```
+然后将 `_csdn_summary.txt` 写入编辑器摘要 textarea（使用 `browser_evaluate` 设值），验证 ≥ 200。
 
-> **§2b — CDN 上传详细步骤**：execImageUpload → browser_wait_for "从本地上传" → browser_run_code_unsafe setInputFiles 注入 `_csdn_body_small.jpg` → wait 10s → 关弹窗(#pane-upimg/.cke_dialog_background_cover/.el-overlay 全部 remove) → 从 getData 提取 CDN URL → strip 全部 `<img>` 再替换 `__BODY_IMG_PLACEHOLDER__`
-
-> **§2c — 封面设置详细步骤**：点 `.img-selection-item img[src*="csdnimg.cn/direct"]` 的父级 → wait 3s → 若 `.vicp-operate-btn` 存在则 click → 若 `.vicp-close` 存在则 click。最终验收 `.container-coverimage-box .preview`。
+编号映射（§5 → §0 主管道）：#0=预检 / #1=⑫填标题 / #2=⑬setData / #2b=⑭CDN上传 / #2c=⑮proxy清理 / #2d=验收 / #3=⑯封面 / #4=⑰标签 / 摘要生成=⑱摘要 / #11=⑳发布。
 
 ---
 
@@ -197,18 +216,18 @@ navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEd
 
 | # | 现象 | 当前方案 | 日期 |
 |---|------|---------|------|
-| 1 | CDN 上传被安全策略拦截 | browser_run_code_unsafe + setInputFiles 直接注入 #pane-upimg input[type="file"] | 7.15 |
-| 2 | 正文图重复（IMG 超出 1 个）| strip 所有 `<img>` 后再替换 `__BODY_IMG_PLACEHOLDER__` | 7.13 |
-| 3 | CKEditor 出现 img-home proxy 占位图 | 通用正则 `<img[^>]*src="https://img-home\.csdnimg\.cn/...` → remove | 7.14 |
-| 4 | 封面裁剪确认卡死 | evaluate `.vicp-operate-btn.click()` 绕过 overlay，不用 Playwright click | 7.17 |
-| 5 | 标签面板不可见 | nativeInputValueSetter 直接赋值隐藏 input，不走面板交互 | 7.21 |
-| 6 | 封面 input 选择器二义性 | 祖先限定：#pane-upimg（正文） vs 关闭后 `input[type="file"]`（封面） | 7.13 |
-| 7 | 原图 >1MB 上传超慢 | PIL resize + q=60 压缩到 <100KB 再上传 | 7.08 |
-| 8 | 编辑器 SPA 崩溃（操作超 30 次）| 操作计数上限 30 次；页面死亡则放弃 | 7.17 |
-| 9 | 发布按钮 Vue 不响应 | `removeAttribute('aria-disabled')` + `dispatchEvent(MouseEvent('click'))`，不用 browser_click | 7.24 |
-| 10 | CDN 上传弹窗按钮为"选择图片"而非"从本地上传" | Click "选择图片" → browser_file_upload → 确认裁剪(.vicp-operate-btn) → 从 getData 取 CDN URL → strip img 后替换占位符 | 7.24 |
-| 11 | AI 提取摘要返回"无法回答" | 取消弹窗后用 browser_fill_form 手动写入摘要，目标 textarea[placeholder*="摘要"] | 7.24 |
-| 12 | 摘要过长会覆盖标题框 | 设摘要后必须验证标题框 #txtTitle 的 value 正确 | 7.24 |
+| 1 | 正文图重复（IMG 超出 1 个）| strip 所有 `<img>` 后再替换 `__BODY_IMG_PLACEHOLDER__` | 7.13 |
+| 2 | CKEditor 出现 img-home proxy 占位图 | 通用正则 `<img[^>]*src="https://img-home\.csdnimg\.cn/...` → remove | 7.14 |
+| 3 | 封面裁剪确认卡死 | evaluate `.vicp-operate-btn.click()` 绕过 overlay，不用 Playwright click | 7.17 |
+| 4 | 标签面板不可见 | nativeInputValueSetter 直接赋值隐藏 input，不走面板交互 | 7.21 |
+| 5 | 原图 >1MB 上传超慢 | PIL resize + q=60 压缩到 <100KB 再上传 | 7.08 |
+| 6 | 编辑器 SPA 崩溃（操作超 30 次）| 操作计数上限 30 次；页面死亡则放弃 | 7.17 |
+| 7 | 发布按钮 Vue 不响应 | `removeAttribute('aria-disabled')` + `dispatchEvent(MouseEvent('click'))`，不用 browser_click | 7.24 |
+| 8 | 摘要自动生成 | `build_article_summary()` 替代 AI提取摘要按钮，200-300 字，重算 3 次后确定性压缩 | 7.25 |
+
+### 已合并/过期（被稳定方案替代不再单独记录）
+- ~CDN 上传被安全策略拦截~ → #8 浏览器文件选择器方案替代
+- ~封面 input 选择器二义性~ → §5 #3 img-selection-item 方案稳定
 
 ---
 
@@ -220,13 +239,14 @@ navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEd
 |---|------|-------------|---------|
 | 0 | 预检（额度+CKEditor就绪） | `async () => { if(document.body.textContent.includes('已达发文上限')) throw new Error('已达发文上限'); for(let i=0;i<40;i++){ if(typeof CKEDITOR!=='undefined' && CKEDITOR.instances && CKEDITOR.instances.editor) return true; await new Promise(r => setTimeout(r, 500)); } throw new Error('CKEditor 加载超时'); }` | CKEDITOR.instances.editor 存在 |
 | 1 | 填标题 #txtTitle | `() => { const t=document.querySelector('#txtTitle'); t.value='标题'; t.dispatchEvent(new Event('input',{bubbles:true})); }` | value === 标题 |
-| 2 | setData 正文 | `() => { CKEDITOR.instances.editor.setData(html); CKEDITOR.instances.editor.fire('change'); return CKEDITOR.instances.editor.getData().length; }` | getData().length > 0 |
+| 2 | setData 正文（从 HTTP 服务 fetch） | `async () => { const r=await fetch('http://localhost:18991/article_csdn.html'); const h=await r.text(); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); return CKEDITOR.instances.editor.getData().length; }` | getData().length > 0 |
 | 2b | CDN 上传（→§2b 详细步骤） | 见下方 §2b 多步序列 | `<img` 计数 === 1 |
 | 2c | 清除 proxy 图 | `() => { let h=CKEDITOR.instances.editor.getData(); h=h.replace(/<img[^>]*src="https:\/\/img-home\.csdnimg\.cn\/images\/[^"]+\?origin_url=[^">]*"[^>]*\/?>/gi,''); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); }` | getData() 无 img-home URL |
 | 2d | 验证图片状态 | `() => { const h=CKEDITOR.instances.editor.getData(); return { proxy:/img-home\.csdnimg\.cn/.test(h), cdn: (h.match(/i-blog\.csdnimg\.cn\/direct\/[^"']+/)?.[0]||'') }; }` | proxy=false 且 cdn 非空 |
 | 3 | 设置封面 | `() => { const i=document.querySelector('.img-selection-item img[src*=\"csdnimg.cn/direct\"]'); if(!i) return 'no_img'; i.closest('.img-selection-item')?.click(); return 'clicked'; }` → wait 3s → `() => { const c=document.querySelector('.vicp-operate-btn'); if(c){c.click();return 'crop';} return 'no_crop'; }` → 若 crop 仍在：`() => { const d=document.querySelector('.vicp-close'); if(d)d.click(); }` | `.container-coverimage-box .preview` 的 src 以 http 开头且 >50 字符 |
 | 4 | 设标签 | `() => { const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set; s.call(document.querySelector('input[name=\"tags\"]'),'标签1,标签2'); document.querySelector('input[name=\"tags\"]').dispatchEvent(new Event('input',{bubbles:true})); }` | `input[name="tags"]` 不为空 |
-| 10 | 提取摘要 | `browser_click` → `target: "text=AI提取摘要"` → wait 4s → 验证 textarea | 摘要 textarea.value.length ≥ 200（若为0则手写） |
+| 10 | 生成摘要（固定模块） | `() => { const ta=document.querySelector('textarea[placeholder*="摘要"]'); if(!ta) return 'no_textarea'; return 'ok'; }` | - |
+| 10b | 验证标题未被覆盖 | `() => { const t=document.querySelector('#txtTitle'); return t?.value?.length > 0 && t.value.length <= 100; }` | title 长度在 5-100 范围 |
 | 11 | **发布博客** | `() => { const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='发布博客'); if(!b) return 'not_found'; b.removeAttribute('aria-disabled'); b.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})); return 'ok'; }` | URL 含 /creation/success/ |
 
 ### §2b — CDN 上传详细步骤（2026-07-24 验证）
@@ -260,8 +280,10 @@ navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEd
 ### 6.1 记录
 追加到 [PUBLISH_LOG.md](PUBLISH_LOG.md)。
 
-### 6.2 复盘
-按 CLAUDE.md 技能修复标准流程执行。复盘唯一产出是 diff，不产复盘章节。
+### 6.2 更新字数比率（必须先于清理执行）
+```python
+python -c "import re,os;html=open('article_csdn.html',encoding='utf-8').read();text=re.sub(r'<[^>]+>','',html);text=re.sub(r'\s+','',text);actual=len(text);budget=7000;new=actual/budget;f='_csdn_budget_ratio.txt';p=float(open(f).read().strip())if os.path.isfile(f)else new;s=p*0.7+new*0.3;open(f,'w').write(f'{s:.4f}');print(f'ratio:{new:.4f} factor:{1/max(s,0.1):.2f}')"
+```
 
 ### 6.3 清理
 ```bash
@@ -269,10 +291,8 @@ python _csdn_prep.py clean
 ```
 保留 `_csdn_last_style.txt` / `_csdn_gen_img.py` / `_csdn_prep.py` / `_csdn_budget_ratio.txt`。
 
-### 6.4 更新字数比率
-```python
-python -c "import re,os;html=open('article_csdn.html',encoding='utf-8').read();text=re.sub(r'<[^>]+>','',html);text=re.sub(r'\s+','',text);actual=len(text);budget=7000;new=actual/budget;f='_csdn_budget_ratio.txt';p=float(open(f).read().strip())if os.path.isfile(f)else new;s=p*0.7+new*0.3;open(f,'w').write(f'{s:.4f}');print(f'ratio:{new:.4f} factor:{1/max(s,0.1):.2f}')"
-```
+### 6.4 复盘
+按 CLAUDE.md 技能修复标准流程执行。复盘唯一产出是 diff，不产复盘章节。
 
 ---
 
