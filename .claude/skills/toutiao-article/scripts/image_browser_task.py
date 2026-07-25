@@ -7,15 +7,17 @@ from pathlib import Path
 
 
 def _project_root() -> Path:
-    candidates = []
-    for value in (os.environ.get("CLAUDE_PROJECT_DIR"), os.environ.get("PWD")):
-        if value:
-            candidates.append(Path(value).resolve())
-    candidates.append(Path.cwd().resolve())
-    for candidate in candidates:
-        if (candidate / ".git").exists() or (candidate / ".playwright-mcp").exists():
-            return candidate
-    return Path.cwd().resolve()
+    """从脚本自身向上找包含 .git 或 .playwright-mcp 的目录，不依赖任何环境变量."""
+    current = Path(__file__).resolve().parent  # scripts/
+    for _ in range(20):
+        if (current / ".git").exists() or (current / ".playwright-mcp").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    fallback = Path.cwd().resolve()
+    return fallback
 
 
 def build_phase4_browser_task(*, title, html, article_hash, image_paths,
