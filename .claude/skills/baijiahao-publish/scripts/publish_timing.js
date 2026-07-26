@@ -1,5 +1,5 @@
-// 🔴 定时发布脚本 v9.0（2026-07-20 审计重写）
-// 🔴 三步：点主按钮 → 点弹窗确认 → 验证跳转
+// 🔴 定时发布脚本 v9.1（2026-07-26 修复：补写 sessionStorage 供 verify_submission 使用）
+// 🔴 三步：点主按钮 → 点弹窗确认 → 验证跳转 → 写验收凭据
 // 🔴 不操作 React DOM
 // 执行方式：mcp__playwright__browser_evaluate 包进 async () => {...} 注入
 
@@ -7,6 +7,11 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const $ = (sel) => document.querySelector(sel);
+
+  // 0. 读取标题用于验收凭据
+  const titleInput = Array.from(document.querySelectorAll('div[contenteditable="true"]'))
+    .find((el) => el.getClientRects().length > 0);
+  const publishedTitle = titleInput ? titleInput.textContent.trim() : '';
 
   function reactClick(el) {
     if (!el) return;
@@ -49,5 +54,12 @@
     await sleep(500);
   }
   if (!jumped) throw new Error('BJH_PUBLISH_FAILED:stage=no_redirect');
+
+  // 5. 写验收凭据供 verify_submission.js 使用
+  if (publishedTitle) {
+    sessionStorage.setItem('bjh_published_title', publishedTitle);
+    sessionStorage.setItem('bjh_published_schedule', new Date().toISOString());
+  }
+
   return { status: 'published', url: location.href };
 })();

@@ -1,16 +1,16 @@
-import re
+import hashlib
+from pathlib import Path
 
-with open(r'C:\Users\59314\claudework\.claude\skills\baijiahao-publish\article.html', encoding='utf-8') as f:
-    html = f.read()
 
-# Escape backticks, backslashes, and ${} for JS template literal
-escaped = html.replace('\\', '\\\\')
-escaped = escaped.replace('`', '\\`')
-escaped = escaped.replace('${', '\\${')
-
-js_func = "() => { UE_V2.instants['ueditorInstant0'].setContent(`" + escaped + "`); }"
-
-with open(r'C:\Users\59314\claudework\.claude\skills\baijiahao-publish\inject.js', 'w', encoding='utf-8') as f:
-    f.write(js_func)
-
-print('inject.js written, length:', len(js_func))
+def generate(article_path: Path, inject_path: Path, title: str = "", keywords: list[str] | None = None) -> dict[str, object]:
+    """读取 article.html → 转义 JS 模板字符串 → 写入 inject.js"""
+    html = article_path.read_text(encoding="utf-8")
+    escaped = html.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    js_func = f"() => {{ UE_V2.instants['ueditorInstant0'].setContent(`{escaped}`); }}"
+    inject_path.parent.mkdir(parents=True, exist_ok=True)
+    inject_path.write_text(js_func, encoding="utf-8")
+    return {
+        "status": "inject_ready",
+        "articleSha256": hashlib.sha256(article_path.read_bytes()).hexdigest(),
+        "injectLength": len(js_func),
+    }

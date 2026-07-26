@@ -26,13 +26,25 @@
   }
 
   // 取第 N 节（0基）末尾1-2段原文做 prompt
+  // 节标题检测：<strong> 独占段落（正文无加粗后，所有 <strong> 就是节标题）
+  function getSectionTitleIndexes() {
+    const editor = window.UE_V2.instants['ueditorInstant0'];
+    const doc = editor.document;
+    const paragraphs = Array.from(doc.querySelectorAll('p'));
+    return paragraphs
+      .map((p, i) => ({ i, text: p.textContent || '' }))
+      .filter((x) => {
+        const p = paragraphs[x.i];
+        // <strong> 独占段落就是节标题
+        return p && /^<strong(\s[^>]*)?>[\s\S]*?<\/strong>\s*$/i.test(p.innerHTML);
+      });
+  }
+
   function getSectionTail(sectionIndex) {
     const editor = window.UE_V2.instants['ueditorInstant0'];
     const doc = editor.document;
     const paragraphs = Array.from(doc.querySelectorAll('p'));
-    const titleIndexes = paragraphs
-      .map((p, i) => ({ i, text: p.textContent || '' }))
-      .filter((x) => x.text.includes('━━━'));
+    const titleIndexes = getSectionTitleIndexes();
     const start = titleIndexes[sectionIndex].i;
     const end = sectionIndex + 1 < titleIndexes.length ? titleIndexes[sectionIndex + 1].i : paragraphs.length;
     return paragraphs
@@ -48,9 +60,7 @@
     const editor = window.UE_V2.instants['ueditorInstant0'];
     const doc = editor.document;
     const paragraphs = Array.from(doc.querySelectorAll('p'));
-    const titleIndexes = paragraphs
-      .map((p, i) => ({ i, text: p.textContent || '' }))
-      .filter((x) => x.text.includes('━━━'));
+    const titleIndexes = getSectionTitleIndexes();
     const next = titleIndexes[sectionIndex + 1] || { i: paragraphs.length - 1 };
     const ueRange = editor.selection.getRange();
     ueRange.setStartBefore(paragraphs[next.i]);
@@ -64,9 +74,7 @@
     const editor = window.UE_V2.instants['ueditorInstant0'];
     const doc = editor.document;
     const paragraphs = Array.from(doc.querySelectorAll('p'));
-    const titleIndexes = paragraphs
-      .map((p, i) => ({ i, text: p.textContent || '' }))
-      .filter((x) => x.text.includes('━━━'));
+    const titleIndexes = getSectionTitleIndexes();
     const start = titleIndexes[sectionIndex].i;
     const end = sectionIndex + 1 < titleIndexes.length ? titleIndexes[sectionIndex + 1].i : paragraphs.length;
     return paragraphs.slice(start + 1, end).reduce((c, p) => c + p.querySelectorAll('img').length, 0);
@@ -115,11 +123,18 @@
     if (ta.value !== prompt) throw new Error('BJH_AI_IMAGE_FAILED:section=' + (sectionIndex + 1) + ':stage=prompt_not_applied');
     await sleep(500);
 
-    // 生成
+    // 生成 — 轮询直到图片出现（最长 40s）
     const genBtn = $('.FeEditorApp-_65f7660e096d0b20-btn');
     if (!genBtn) throw new Error('BJH_AI_IMAGE_FAILED:section=' + (sectionIndex + 1) + ':stage=no_gen_btn');
     reactClick(genBtn);
-    await sleep(30000);
+    const generateDeadline = Date.now() + 40000;
+    let generated = false;
+    while (Date.now() < generateDeadline) {
+      const img = $('.cheetah-tabs-tabpane-active img');
+      if (img && img.naturalWidth > 1) { generated = true; break; }
+      await sleep(1000);
+    }
+    if (!generated) throw new Error('BJH_AI_IMAGE_FAILED:section=' + (sectionIndex + 1) + ':stage=generate_timeout');
 
     // 选第一张图（多选择器容错）
     const clickSelectors = [
@@ -147,20 +162,7 @@
     reactClick(confirmBtn);
     await sleep(5000);
 
-    // 🔴 v9.0：验证图片是真实图片（不是1x1像素）
-    const editor = window.UE_V2.instants['ueditorInstant0'];
-    const doc = editor.document;
-    const imgsInSection = Array.from(doc.querySelectorAll('p'))
-      .filter(p => {
-        const titleIdx = Array.from(doc.querySelectorAll('p'))
-          .map((x, i) => ({ i, text: x.textContent || '' }))
-          .filter(x => x.text.includes('━━━'));
-        const start = titleIdx[sectionIndex].i;
-        const end = titleIdx[sectionIndex + 1] ? titleIdx[sectionIndex + 1].i : doc.querySelectorAll('p').length;
-        const pIdx = Array.from(doc.querySelectorAll('p')).indexOf(p);
-        return pIdx >= start && pIdx < end;
-      })
-      .reduce((c, p) => c + p.querySelectorAll('img').length, 0);
+    // 🔴 验证：用 sectionImgCount 确认已插入（不靠内联重复计算）
     const lastInserted = sectionImgCount(sectionIndex);
     if (lastInserted < 1) throw new Error('BJH_AI_IMAGE_FAILED:section=' + (sectionIndex + 1) + ':stage=img_not_found');
     return lastInserted;
