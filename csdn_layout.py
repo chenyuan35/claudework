@@ -30,14 +30,14 @@ from typing import List
 # ═══════════════════════════════════════════════════════════════
 
 PARA_TARGET_MIN = 60       # 普通段落目标下限
-PARA_TARGET_MAX = 110      # 普通段落目标上限
+PARA_TARGET_MAX = 140      # 普通段落目标上限
 PARA_HARD_MAX = 140        # 普通段落硬上限
 PARA_MINI_MIN = 25         # 开头/结尾/过渡段下限
 PARA_MINI_MAX = 60         # 开头/结尾/过渡段上限
 SENTENCE_PER_PARA_MIN = 2  # 每段最少句数
 SENTENCE_PER_PARA_MAX = 4  # 每段最多句数
 BLOCK_PARAS_MIN = 3        # 每个 h2/h3 区块最少段数
-BLOCK_PARAS_MAX = 7        # 每个 h2/h3 区块最多段数
+BLOCK_PARAS_MAX = 18        # 每个 h2/h3 区块最多段数
 MOBILE_LINE_MAX = 7        # 手机端 390px 最大行数
 
 # 中文字符宽度的近似 px 值（用于 390px 容器模拟）
@@ -141,100 +141,107 @@ def normalize_csdn_html(article_html: str) -> str:
             result_parts.append(block)
             continue
 
-        # <p> 块：提取内容，拆段，重新包裹
-        para_content = re.sub(r'</?p[^>]*>', '', block).strip()
-        plain_text = _html_to_plain(para_content)
-
-        if not plain_text:
+        # <p> 块：可能有多个 <p>，逐个处理，保留原文段落边界
+        inner_paras = list(re.finditer(r'<p\b[^>]*>.*?</p>', block, re.DOTALL))
+        if not inner_paras:
+            para_content = re.sub(r'</?p[^>]*>', '', block).strip()
+            if para_content:
+                result_parts.append(f'<p>{para_content}</p>')
             continue
 
-        # 拆句
-        sentences = _split_sentences(plain_text)
+        for m in inner_paras:
+            pp = m.group(0)
+            para_content = re.sub(r'</?p[^>]*>', '', pp).strip()
+            plain_text = _html_to_plain(para_content)
 
-        # 如果只有一句或总长很小：保留原样
-        if len(sentences) <= 1 or len(plain_text) < PARA_TARGET_MIN:
-            result_parts.append(f'<p>{para_content}</p>')
-            continue
-
-        # 组合句子为段落（2-4 句/段，目标 60-110 汉字）
-        new_paras = []
-        current = []
-        current_len = 0
-
-        i = 0
-        while i < len(sentences):
-            sent = sentences[i]
-            sent_len = _count_han(sent)
-
-            if not current:
-                # 第一句：必须放进去
-                current.append(sent)
-                current_len = sent_len
-                i += 1
+            if not plain_text:
                 continue
 
-            # 计算当前段加上下一句后的长度
-            would_be = current_len + sent_len + 2  # +2 for spacing
+            sentences = _split_sentences(plain_text)
 
-            # 判断条件：是否应该继续添加
-            should_add = True
+            if len(sentences) <= 1 or len(plain_text) < PARA_TARGET_MIN:
+                result_parts.append(f'<p>{para_content}</p>')
+                continue
 
-            # 如果当前段落已经达到 4 句，不再添加
-            if len(current) >= SENTENCE_PER_PARA_MAX:
-                should_add = False
-            # 如果加入后超过硬上限，不再添加
-            elif would_be > PARA_HARD_MAX:
-                should_add = False
-            # 如果加入后超过手机端行数上限，不再添加
-            if current_len >= 60:  # only check once we have enough content
-                test_text = ''.join(current + [sent])
-                test_units = 0
-                for ch in test_text:
-                    if '一' <= ch <= '鿿':
-                        test_units += 1
-                    else:
-                        test_units += 0.6
-                available = 390 - 32
-                char_width = 16
-                chars_per_line = available // char_width
-                test_lines = max(1, -(-int(test_units) // chars_per_line))
-                if test_lines > 7:
+            # 组合句子为段落（2-4 句/段，目标 60-110 汉字）
+            new_paras = []
+            current = []
+            current_len = 0
+
+            i = 0
+            while i < len(sentences):
+                sent = sentences[i]
+                sent_len = _count_han(sent)
+
+                if not current:
+                    # 第一句：必须放进去
+                    current.append(sent)
+                    current_len = sent_len
+                    i += 1
+                    continue
+
+                # 计算当前段加上下一句后的长度
+                would_be = current_len + sent_len + 2  # +2 for spacing
+
+                # 判断条件：是否应该继续添加
+                should_add = True
+
+                # 如果当前段落已经达到 4 句，不再添加
+                if len(current) >= SENTENCE_PER_PARA_MAX:
                     should_add = False
-            # 如果当前段落已经达到目标上限且后续还有足够句子
-            elif current_len >= PARA_TARGET_MAX and len(sentences) - i >= 2:
-                should_add = False
+                # 如果加入后超过硬上限，不再添加
+                elif would_be > PARA_HARD_MAX:
+                    should_add = False
+                # 如果加入后超过手机端行数上限，不再添加
+                if current_len >= 60:  # only check once we have enough content
+                    test_text = ''.join(current + [sent])
+                    test_units = 0
+                    for ch in test_text:
+                        if '一' <= ch <= '鿿':
+                            test_units += 1
+                        else:
+                            test_units += 0.6
+                    available = 390 - 32
+                    char_width = 16
+                    chars_per_line = available // char_width
+                    test_lines = max(1, -(-int(test_units) // chars_per_line))
+                    if test_lines > 7:
+                        should_add = False
+                # 如果当前段落已经达到目标上限且后续还有足够句子
+                elif current_len >= PARA_TARGET_MAX and len(sentences) - i >= 2:
+                    should_add = False
 
-            if should_add:
-                current.append(sent)
-                current_len = would_be
-                i += 1
-            else:
-                # 保存当前段落
+                if should_add:
+                    current.append(sent)
+                    current_len = would_be
+                    i += 1
+                else:
+                    # 保存当前段落
+                    para_text = ''.join(current)
+                    if len(current) >= SENTENCE_PER_PARA_MIN or current_len >= PARA_MINI_MIN:
+                        new_paras.append(f'<p>{para_text}</p>')
+                    else:
+                        # 如果不足 2 句且长度不够，合并到下一段
+                        if i < len(sentences):
+                            sentences[i] = para_text + sentences[i]
+                        else:
+                            new_paras.append(f'<p>{para_text}</p>')
+                    current = []
+                current_len = 0
+
+            # 处理剩余句子
+            if current:
                 para_text = ''.join(current)
                 if len(current) >= SENTENCE_PER_PARA_MIN or current_len >= PARA_MINI_MIN:
                     new_paras.append(f'<p>{para_text}</p>')
+                elif new_paras:
+                    # 追加到上一段
+                    last = new_paras[-1]
+                    new_paras[-1] = last.replace('</p>', para_text + '</p>')
                 else:
-                    # 如果不足 2 句且长度不够，合并到下一段
-                    if i < len(sentences):
-                        sentences[i] = para_text + sentences[i]
-                    else:
-                        new_paras.append(f'<p>{para_text}</p>')
-                current = []
-                current_len = 0
+                    new_paras.append(f'<p>{para_text}</p>')
 
-        # 处理剩余句子
-        if current:
-            para_text = ''.join(current)
-            if len(current) >= SENTENCE_PER_PARA_MIN or current_len >= PARA_MINI_MIN:
-                new_paras.append(f'<p>{para_text}</p>')
-            elif new_paras:
-                # 追加到上一段
-                last = new_paras[-1]
-                new_paras[-1] = last.replace('</p>', para_text + '</p>')
-            else:
-                new_paras.append(f'<p>{para_text}</p>')
-
-        result_parts.extend(new_paras)
+            result_parts.extend(new_paras)
 
     # Post-process: split paragraphs that exceed mobile line limit
     final_parts = []

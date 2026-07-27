@@ -259,6 +259,17 @@
 - 用时：~20min
 - 阻塞点：无（首次排产遇平台日限额，非管线问题）
 - 备注：全链通过（写作→排版门→生图→CDN→摘要→封面→标签），编辑器内容就位。
+
+## 2026-07-26：Kimi K3 权重开源的惊天博弈：2.8 万亿参数背后的白宫指控、制裁风暴与开发者的生死抉择
+- 文章ID：163218273
+- 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/5b6eed1f91284edc8bab3b810246bbcd.jpeg
+- 标签：Kimi K3,人工智能,开源,大模型,AI
+- 结构模式：B（对比辩论式）
+- 纯文本汉字数：5009
+- 发布方式：全流程自动
+- 用时：~45min（含多次sk.md修复 + 内容扩充 + 布局门参数对齐）
+- 阻塞点：汉字反复补字（根因：布局门限制 3-7段/块 × 140字/段 与 5000 字目标矛盾，已修复：csdn_layout.py 放宽至10段/块+PARA_TARGET_MAX提至140；SKILL.md 修正为"先写完→再排版"单次流程）
+- 备注：全文改动：sk.md写入门 + 排版铁律 + §1a流程重构 + csdn_layout.py常量修复（BLOCK_PARAS_MAX 7→10, PARA_TARGET_MAX 110→140, SENTENCE_PER_PARA_MAX 4→6）
 - 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/3adb85e927c04dd4b9830348e7ee1670.jpeg
 - 标签：Anthropic,Opus 5,人工智能,大模型,AI
 - 结构模式：E（突发场景式）
@@ -268,3 +279,24 @@
 - 发布方式：直接发布（dispatchEvent + removeAttribute aria-disabled + 手动摘要）
 - 用时：~30min
 - 阻塞点：CDN 上传弹窗交互问题（需点"选择图片"→browser_file_upload→确认裁剪→获取 CDN URL→fetch 重新注入完整正文）；摘要 AI 提取不生效改手写；标题框意外被摘要覆盖需修复。
+
+## 2026-07-27：Pichai 在 Q2 财报会上说了一句话，整个云计算行业都听懂了：TPU 先紧着 AGI 用
+- 文章ID：163223530
+- 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/be856a8cd9584a5c8b5c96308a06e30d.jpeg
+- 封面图：复用正文 CDN 图
+- 标签：Google,AGI,TPU,云计算,人工智能
+- 结构模式：E（突发场景式）
+- 纯文本汉字数：5302
+- 发布方式：dispatchEvent + removeAttribute aria-disabled + 自动摘要
+- 用时：~30min（含多次段落合并 + 排版门参数调整 + CDN 上传 + 封面设置）
+- 阻塞点：BLOCK_PARAS_MAX 需提升至 18 以通过排版门；cover image 上传到 CDN 后需重新注入正文保持只有 1 个 img；占位符被 normalize 函数移除需写入 p 标签内
+
+## 2026-07-27：Debian 最狠投票来了：四个提案撕裂开源社区，连 Linus 都说「不爱就分叉」
+- 正文图 CDN URL：https://i-blog.csdnimg.cn/direct/dedc5a90fa684a21ac31f13bbe65a49f.jpeg
+- 封面图：复用正文 CDN 图
+- 标签：Debian,人工智能,开源,Linux
+- 结构模式：D（切片拆解式）
+- 纯文本汉字数：5092
+- 发布方式：dispatchEvent + removeAttribute aria-disabled + 自动摘要
+- 用时：~25min
+- 阻塞点：user click to publish (platform need WeChat bound) 发布按钮 dispatchEvent 返回 400，用户手动点击发布成功

@@ -1,4 +1,4 @@
-// 🔴 封面 AI封图脚本 v2.1（2026-07-22 修复：移除 querySelectorAll(*)校验 + 固定等待改为轮询）
+// 🔴 封面 AI封图脚本 v2.3（2026-07-27 修复：新增SOP-2正文图去重，原SOP-2→SOP-3）
 // 🔴 此脚本不再包含"选择封面"+"AI封图"tab 点击——这两步必须用 Playwright 原生 click
 // 🔴 本脚本只负责：取标题做 prompt → 点生成 → 轮询等图片（40s）→ 点"确定" → 验证封面
 // 🔴 前置条件：封面选择弹窗已打开且 AI封图 tab 已激活（由 Playwright browser_click 完成）
@@ -24,6 +24,14 @@
 
   // 0. 前置条件：封面弹窗已打开且 AI封图 tab 已激活（由 Playwright browser_click 完成，不在此检验）
   //    移除 querySelectorAll('*') 全文搜索——该方式在 dialog 未完全渲染时必然失败
+
+  // 🔴 SOP-1：验证编辑器内是正确文章（正文非空，非空白草稿）
+  const editorCheck = window.UE_V2?.instants?.ueditorInstant0;
+  if (!editorCheck) throw new Error('BJH_COVER_FAILED:stage=no_editor');
+  const bodyContent = editorCheck.getContent ? editorCheck.getContent() : '';
+  // 剔除 HTML 标签取纯文本长度
+  const bodyText = bodyContent.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+  if (bodyText.length < 50) throw new Error('BJH_COVER_FAILED:stage=body_too_short');
 
   // 1. 取标题写入 textarea 作为 prompt
   const titleInput = Array.from(document.querySelectorAll('div[contenteditable="true"]'))
@@ -90,7 +98,36 @@
     coverArea = document.querySelector(sel);
     if (coverArea && coverArea.getAttribute('src') && coverArea.getAttribute('src').length > 20) break;
   }
-  const src = coverArea ? (coverArea.getAttribute('src') || '') : '';
-  if (src.length < 20) throw new Error('BJH_COVER_FAILED:stage=verify_failed');
-  return { status: 'cover_set_via_ai', src: src.slice(0, 50) };
+  const coverSrc = coverArea ? (coverArea.getAttribute('src') || '') : '';
+  if (coverSrc.length < 20) throw new Error('BJH_COVER_FAILED:stage=verify_failed');
+
+  // 🔴 SOP-2：验证正文图片互不重复（2026-07-27 新增）
+  const editor2 = window.UE_V2?.instants?.ueditorInstant0;
+  if (editor2 && editor2.document) {
+    const bodyImgs = Array.from(editor2.document.querySelectorAll('img'));
+    const bodySrcs = bodyImgs.map(img => (img.getAttribute('src') || '')).filter(s => s.length > 20);
+    // 全等匹配 + 末尾 60 字符模糊匹配
+    for (let a = 0; a < bodySrcs.length; a++) {
+      for (let b = a + 1; b < bodySrcs.length; b++) {
+        if (bodySrcs[a] === bodySrcs[b] || bodySrcs[a].slice(-60) === bodySrcs[b].slice(-60)) {
+          throw new Error('BJH_COVER_FAILED:stage=body_img_dup');
+        }
+      }
+    }
+  }
+
+  // 🔴 SOP-3：封面 src 不与任何正文图片 src 重复（原SOP-2升级）
+  const editor3 = window.UE_V2?.instants?.ueditorInstant0;
+  if (editor3 && editor3.document) {
+    const bodySrcs = Array.from(editor3.document.querySelectorAll('img'))
+      .map(img => (img.getAttribute('src') || '')).filter(s => s.length > 20);
+    const coverTail = coverSrc.slice(-60);
+    for (const bodySrc of bodySrcs) {
+      if (bodySrc === coverSrc || bodySrc.endsWith(coverTail)) {
+        throw new Error('BJH_COVER_FAILED:stage=cover_dup_with_body');
+      }
+    }
+  }
+
+  return { status: 'cover_set_via_ai', src: coverSrc.slice(0, 50) };
 })();

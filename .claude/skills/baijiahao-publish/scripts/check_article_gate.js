@@ -1,7 +1,8 @@
-// 🔴 纯页面内自包含脚本（2026-07-24 审计修复：stage 缺失时默认 content）
+// 🔴 纯页面内自包含脚本（2026-07-26 审计修复：移除 dataset 死注释，正文无加粗后直接数全部 <strong>）
 // 执行方式：mcp__playwright__browser_evaluate 包进 async () => {...} 注入执行
 // 单一阶段：content（正文硬指标）。publish 阶段已废弃——发布前检查由各阶段自身负责。
 
+// 闸门通过 rawHtml 统计 <strong> 数量判定小节数（正文已无加粗，所有 <strong> 都是节标题）
 (async () => {
   const stage = sessionStorage.getItem('bjh_gate_stage') || 'content';
 
@@ -23,9 +24,21 @@
     .split('⏎')
     .map((value) => value.trim())
     .filter(Boolean);
-  const contentParas = paras.filter((value) => !value.includes('━━━'));
-  const sectionCount = (rawHtml.match(/━━━/g) || []).length;
+  const contentParas = paras.length - sectionCount;
+  // 🔴 2026-07-26 修复：源头已扼杀正文加粗，直接数全部 <strong> 即节数
+  // UEditor 会剥离 data-bjh-role，但正文已无 <strong>，所以所有 <strong> 都是节标题
+  const allStrong = rawHtml.match(/<strong[^>]*>[\s\S]*?<\/strong>/g) || [];
+  const sectionCount = allStrong.length;
   const imgCount = (rawHtml.match(/<img/g) || []).length;
+  const imageSources = Array.from(rawHtml.matchAll(/<img[^>]+src="([^"]+)"/g)).map((m) => m[1]);
+  const uniqueSources = new Set(imageSources.filter(Boolean));
+  // 🔴 2026-07-27 图片去重：全等或末尾 60 字符匹配即判定重复
+  const imageSrcTailCount = {};
+  for (const src of imageSources) {
+    const tail = src.slice(-60);
+    imageSrcTailCount[tail] = (imageSrcTailCount[tail] || 0) + 1;
+  }
+  const duplicateCount = Object.values(imageSrcTailCount).filter(c => c > 1).length;
   const signatureHtml = rawHtml
     .replace(/<p[^>]*>[^<]*请点击输入图片描述[^<]*<\/p>/gi, '')
     .replace(/<img[^>]*>/gi, '');
@@ -39,8 +52,10 @@
 
   if (hanCount < 2000) hardFailures.push(`汉字数：${hanCount}<2000`);
   if (textLen < 2200) warnings.push(`总字符偏少：${textLen}，建议≥2200`);
-  if (contentParas.length < 42) hardFailures.push(`段数：${contentParas.length}<42`);
+  if (contentParas < 42) hardFailures.push(`段数：${contentParas}<42`);
   if (sectionCount !== 6) hardFailures.push(`小节数：${sectionCount}≠6`);
+  // 🔴 2026-07-27 图片去重门：重复图直接熔断，不在 publish 阶段才拦
+  if (duplicateCount > 0) hardFailures.push(`图片重复：${duplicateCount}组重复（含末尾60字符匹配）`);
 
   // 🔴 段落长度闸门（2026-07-22 新增：任何段落 ≥81 字硬拦截，防止文字墙）
   const pTexts = rawHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [];
@@ -82,8 +97,8 @@
     }
 
     const boldCount = (rawHtml.match(/<strong>/g) || []).length;
-    if (contentParas.length && boldCount < contentParas.length * 2) {
-      warnings.push(`加粗密度：${boldCount}/${contentParas.length}段`);
+    if (contentParas && boldCount < contentParas * 2) {
+      warnings.push(`加粗密度：${boldCount}/${contentParas}段`);
     }
     const hasNumberList = /(?:第[一二三四五六七八九十]|[1-9]\.\s|①|②|③)/.test(plainText);
     const hasParallel = /(?:误区|步骤|要点|原因|症状|做法|注意)/.test(plainText);
@@ -98,7 +113,7 @@
     pass: hardFailures.length === 0,
     hardFailures,
     warnings,
-    metrics: { textLen, hanCount, contentParas: contentParas.length, sectionCount, imgCount },
+    metrics: { textLen, hanCount, contentParas, sectionCount, imgCount },
     contentSignature,
   };
 

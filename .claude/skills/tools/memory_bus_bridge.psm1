@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-function Set-MemoryBusUtf8 {
+function Set-HermesMemoryUtf8 {
     $utf8 = [Text.UTF8Encoding]::new($false)
     [Console]::InputEncoding = $utf8
     [Console]::OutputEncoding = $utf8
@@ -8,8 +8,8 @@ function Set-MemoryBusUtf8 {
 }
 
 function Get-ClaudeworkWorkspaceRoot {
-    if (-not [string]::IsNullOrWhiteSpace($env:CLAUDEWORK_MEMORY_BUS_WORKSPACE)) {
-        $configured = [IO.Path]::GetFullPath($env:CLAUDEWORK_MEMORY_BUS_WORKSPACE)
+    if (-not [string]::IsNullOrWhiteSpace($env:CLAUDEWORK_HERMES_MEMORY_WORKSPACE)) {
+        $configured = [IO.Path]::GetFullPath($env:CLAUDEWORK_HERMES_MEMORY_WORKSPACE)
         if (Test-Path -LiteralPath $configured -PathType Container) {
             return $configured
         }
@@ -17,34 +17,31 @@ function Get-ClaudeworkWorkspaceRoot {
     return [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 }
 
-function Get-MemoryBusExecutable {
+function Get-HermesExternalMemoryPython {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspaceRoot
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($env:CLAUDEWORK_MEMORY_BUS_EXE)) {
-        $configured = [IO.Path]::GetFullPath($env:CLAUDEWORK_MEMORY_BUS_EXE)
-        if (Test-Path -LiteralPath $configured -PathType Leaf) {
-            return $configured
-        }
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:CLAUDEWORK_HERMES_MEMORY_PYTHON)) {
+        $candidates += [IO.Path]::GetFullPath($env:CLAUDEWORK_HERMES_MEMORY_PYTHON)
     }
-
-    $candidates = @(
-        (Join-Path $WorkspaceRoot 'cc-switch\src-tauri\target\release\memory_bus.exe'),
-        (Join-Path $WorkspaceRoot 'cc-switch\src-tauri\target\debug\memory_bus.exe'),
-        (Join-Path $WorkspaceRoot 'cc-switch\src-tauri\target\release\memory-bus.exe'),
-        (Join-Path $WorkspaceRoot 'cc-switch\src-tauri\target\debug\memory-bus.exe')
-    )
+    if (-not [string]::IsNullOrWhiteSpace($env:HERMES_AGENT_ROOT)) {
+        $candidates += (Join-Path $env:HERMES_AGENT_ROOT 'venv\Scripts\python.exe')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $candidates += (Join-Path $env:LOCALAPPDATA 'hermes\hermes-agent\venv\Scripts\python.exe')
+    }
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-            return $candidate
+            return [IO.Path]::GetFullPath($candidate)
         }
     }
     return $null
 }
 
-function Test-MemoryBusWorkspacePath {
+function Test-ClaudeworkWorkspacePath {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspaceRoot,
@@ -66,7 +63,7 @@ function Test-MemoryBusWorkspacePath {
     }
 }
 
-function Get-MemoryBusContext {
+function Get-HermesExternalMemoryContext {
     param(
         [Parameter(Mandatory = $true)]
         [string]$WorkspaceRoot,
@@ -77,56 +74,88 @@ function Get-MemoryBusContext {
         [int]$MaxChars = 6000
     )
 
-    $memoryBus = Get-MemoryBusExecutable -WorkspaceRoot $WorkspaceRoot
-    if ($null -eq $memoryBus) {
+    $python = Get-HermesExternalMemoryPython -WorkspaceRoot $WorkspaceRoot
+    $bridge = Join-Path $WorkspaceRoot '.claude\skills\tools\hermes_external_memory_bridge.py'
+    if ($null -eq $python -or -not (Test-Path -LiteralPath $bridge -PathType Leaf)) {
         return [pscustomobject]@{
             success = $false
-            code = 'memory_bus_missing'
+            code = 'hermes_external_memory_bridge_missing'
             context = $null
-            executable = $null
         }
     }
 
-    # A missing ledger is an expected read-only state before activation. Avoid
-    # PowerShell turning the native non-zero exit into a terminating exception
-    # (which would otherwise leak provider stderr through a hook host).
-    $previousErrorActionPreference = $ErrorActionPreference
+    $processInfo = [Diagnostics.ProcessStartInfo]::new()
+    $processInfo.FileName = $python
+    $processInfo.WorkingDirectory = $WorkspaceRoot
+    $processInfo.UseShellExecute = $false
+    $processInfo.CreateNoWindow = $true
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+    $arguments = @($bridge, '--workspace', $WorkspaceRoot, '--consumer', $Consumer, '--max-chars', "$MaxChars", '--timeout-seconds', '8')
+    if ($null -ne $processInfo.PSObject.Properties['ArgumentList']) {
+        foreach ($argument in $arguments) {
+            [void]$processInfo.ArgumentList.Add($argument)
+        }
+    }
+    else {
+        $processInfo.Arguments = (($arguments | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' }) -join ' ')
+    }
+
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $processInfo
     try {
-        $ErrorActionPreference = 'Continue'
-        $output = & $memoryBus context --workspace $WorkspaceRoot --consumer $Consumer --max-chars $MaxChars 2>$null
+        if (-not $process.Start()) {
+            throw 'bridge process did not start'
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(10000)) {
+            try { $process.Kill($true) } catch { $process.Kill() }
+            $process.WaitForExit()
+            return [pscustomobject]@{
+                success = $false
+                code = 'hermes_external_memory_timeout'
+                context = $null
+            }
+        }
+        $stdout = $stdoutTask.GetAwaiter().GetResult().Replace("`r`n", "`n").Trim()
+        [void]$stderrTask.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) {
+            return [pscustomobject]@{
+                success = $false
+                code = 'hermes_external_memory_unavailable'
+                context = $null
+            }
+        }
+        if (-not $stdout.StartsWith('# Hermes external memory context', [StringComparison]::Ordinal)) {
+            return [pscustomobject]@{
+                success = $false
+                code = 'hermes_external_memory_invalid_context'
+                context = $null
+            }
+        }
+        return [pscustomobject]@{
+            success = $true
+            code = 'ok'
+            context = $stdout
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            success = $false
+            code = 'hermes_external_memory_bridge_failed'
+            context = $null
+        }
     }
     finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-    if ($LASTEXITCODE -ne 0) {
-        return [pscustomobject]@{
-            success = $false
-            code = 'memory_bus_unavailable'
-            context = $null
-            executable = $memoryBus
-        }
-    }
-    $context = ($output -join [Environment]::NewLine).Trim()
-    if (-not $context.StartsWith('# Memory Bus context', [StringComparison]::Ordinal)) {
-        return [pscustomobject]@{
-            success = $false
-            code = 'memory_bus_invalid_context'
-            context = $null
-            executable = $memoryBus
-        }
-    }
-    return [pscustomobject]@{
-        success = $true
-        code = 'ok'
-        context = $context
-        executable = $memoryBus
+        $process.Dispose()
     }
 }
 
 Export-ModuleMember -Function @(
-    'Set-MemoryBusUtf8',
+    'Set-HermesMemoryUtf8',
     'Get-ClaudeworkWorkspaceRoot',
-    'Get-MemoryBusExecutable',
-    'Test-MemoryBusWorkspacePath',
-    'Get-MemoryBusContext'
+    'Get-HermesExternalMemoryPython',
+    'Test-ClaudeworkWorkspacePath',
+    'Get-HermesExternalMemoryContext'
 )
