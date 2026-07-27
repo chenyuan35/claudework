@@ -274,6 +274,34 @@ class PipelineTests(unittest.TestCase):
             state = json.loads(state_file.read_text(encoding="utf-8"))
             self.assertEqual(state["stageIndex"], 4)
 
+    def test_browser_verify_merges_stage_result(self) -> None:
+        """sourceFile 脚本结果经 sessionStorage 合并后，最终返回含 status+taskToken。"""
+        pipeline = PIPELINE.stages(Path("inject.js"), "测试标题")
+        prepare = next(s for s in pipeline if s.name == "prepare_home")
+        task = PIPELINE._build_browser_task(prepare, {"title": "t"})
+        # 每个 sourceFile 前后夹 nonce + verify
+        source_ops = [op for op in task["operations"] if op.get("sourceFile")]
+        self.assertEqual(len(source_ops), 1)
+        # verify 函数必须读取 bjh_stage_result
+        verify_ops = [
+            op for op in task["operations"]
+            if "bjh_stage_result" in op.get("function", "")
+            and "taskToken" in op.get("function", "")
+            and "removeItem" in op.get("function", "")
+        ]
+        self.assertTrue(verify_ops, "verify step must merge bjh_stage_result with taskToken")
+
+    def test_write_prompt_targets_2500_han_and_six_sections(self) -> None:
+        write = next(s for s in PIPELINE.stages(Path("inject.js"), "t") if s.name == "write_article")
+        self.assertIn("2500", write.reasoning_prompt)
+        self.assertIn("恰好 6 节", write.reasoning_prompt)
+        self.assertIn("一个句号一个段落", write.reasoning_prompt)
+
+    def test_select_topic_prompt_uses_history(self) -> None:
+        select = next(s for s in PIPELINE.stages(Path("inject.js"), "t") if s.name == "select_topic")
+        self.assertIn("article_history.json", select.reasoning_prompt)
+        self.assertIn("CTR", select.reasoning_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

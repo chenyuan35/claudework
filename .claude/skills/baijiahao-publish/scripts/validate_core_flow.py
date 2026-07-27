@@ -57,6 +57,9 @@ def main() -> int:
         "bjh_publish_gate_receipt",
         "submission_verified",
         "mcp__playwright__browser_*",
+        "bjh_stage_result",
+        "article_history.json",
+        "2500",
     ]
     for term in required_skill_terms:
         require(term in skill, f"SKILL.md missing contract term: {term}")
@@ -79,7 +82,18 @@ def main() -> int:
 
     require("sectionCount" in gate and "allStrong" in gate, "browser gate lacks strong-based section counting")
     require("new Set(imageSources.filter(Boolean))" in gate, "browser gate lacks unique image check")
+    require("bjh_stage_result" in gate, "browser gate must write bjh_stage_result")
+    require("content_gate_passed" in gate, "browser gate must set content_gate_passed status")
     require("naturalWidth > 1" in images, "image module lacks real-image validation")
+    require("waitUntil" in images, "image module must use condition polling waitUntil")
+    require("images_complete" in images, "image module must return images_complete")
+    require("bjh_ai_images_complete" in images, "image module must write bjh_ai_images_complete")
+    require("cover_complete" in cover, "cover module must return cover_complete")
+    require("bjh_cover_complete" in cover, "cover module must write bjh_cover_complete")
+    require("scheduled" in publish, "publish module must return scheduled")
+    require("bjh_publish_gate_receipt" in publish, "publish module must write gate receipt")
+    require("bjh_stage_result" in pipeline, "pipeline must merge bjh_stage_result")
+    require("article_history" in pipeline or "HISTORY_FILE" in pipeline, "pipeline must track article history")
     require("mcp__playwright__browser_" in pipeline, "pipeline does not emit MCP Playwright tools")
     for forbidden in ("selenium", "puppeteer", "nodriver", "playwright.sync_api", "playwright.async_api"):
         require(forbidden not in pipeline.lower(), f"pipeline contains forbidden browser dependency: {forbidden}")

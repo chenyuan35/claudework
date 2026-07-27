@@ -1,4 +1,4 @@
-// 🔴 百家号正文配图脚本 v9.0（2026-07-20 审计重写）
+// 🔴 百家号正文配图脚本 v9.0（2026-07-20 审计重写，修复：改取1段不连2段防污染）
 // 🔴 此脚本只有一条路径：6节循环 → 每节固定10步 → 全验证
 // 🔴 任何验证失败 → throw → 外层 retry 捕获后从头开始
 // 执行方式：mcp__playwright__browser_evaluate 包进 async () => {...} 注入
@@ -51,8 +51,7 @@
       .slice(start + 1, end)
       .map((p) => (p.textContent || '').replace(/\s+/g, ' ').trim())
       .filter((t) => t && !t.includes('请点击输入图片描述') && t.length > 2)
-      .slice(-2)
-      .join('');
+      .slice(-1)[0] || '';
   }
 
   // 用 UEditor Range 定位光标至节末尾

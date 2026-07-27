@@ -1,6 +1,6 @@
 ---
 name: blogger-publish
-description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.1 — 审计减法。8步固定路径，固定5 H3，去重融合。
+description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.2 — 结构轮换。8步固定路径，5-7 H3 结构轮换，去重融合。
 ---
 
 # Blogger · WealthWiseDaily · 全自动发布 v7.0
@@ -17,7 +17,7 @@ description: Blogger「WealthWiseDaily」全自动发布。单管道 v7.1 — �
 | 博主资料名 | SmartMoneyMoves |
 | 定位 | 个人理财 · 省钱攻略 · 英文，2,000-2,500 词 |
 | 目标受众 | Gen Z / Millennials，美式中产焦虑 |
-| 当前博文 | 46 篇（最新: 2026-07-24 第46篇） |
+| 当前博文 | 48 篇（最新: 2026-07-27 第48篇） |
 
 ---
 
@@ -64,7 +64,7 @@ Phase 0 → Step 1 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → 
 ### Step 2：生成文章正文 HTML
 
 **输入**：§2 骨架 + 标题
-**动作**：按 §1b 去 AI 味规则填充。每段 1-3 句 + 长短句混搭 + 真人过渡词（≥2）+ 自嘲（≥1）+ 平行结构破坏 + contractions（≥5）+ 无总结句。嵌入 3 条 » 内链 + `<img src="__HERO_IMG__">` 占位。每个 H3 按固定顺序换切入角度（情感→数字→对话→场景→反直觉）
+**动作**：按 §1b 去 AI 味规则填充。段落不设速查表（见 §2 骨架），H3 内部弧线按 §2 轮换规则选型。嵌入 3 条 » 内链 + `<img src="__HERO_IMG__">` 占位。
 **验证**：`wc -w` ≥ 2,000（Write 后立即执行，<2,000 进入失败分支）
 **失败**：<2,000 → 在现有段落扩细节后重新验证
 **恢复点**：Step 2 入口，重写后再次 `wc -w`
@@ -74,10 +74,10 @@ Phase 0 → Step 1 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → 
 ### Step 2a：生成图片
 
 **输入**：HTML 含 `__HERO_IMG__` / `__INNER_IMG_1__` ~ `__INNER_IMG_4__` 占位符，alt 属性已写好 prompt
-**动作**：`python scripts/auto_blogger_images.py`（自动检测占位符 → 从 alt 取 prompt → 并行调 Agnes API → 替换 URL → 质检无 Unsplash → 写回）
-**验证**：5 张图全部成功（URL 含 `agnes-ai.space`），无占位符残留
-**失败**：部分失败 → 重新运行 `python scripts/auto_blogger_images.py`（脚本容错，单图失败不中断其他图；重跑会用 alt 文本重新生成本轮失败图；若 Agnes 503 持续，传入 `--prompts "hero text|inner1 text|inner2 text|inner3 text"` 跳过 alt 提取环节）
-**恢复点**：重新运行脚本
+**动作**：Python 批量导入 `generate()` 函数（timeout=300），逐张调 Agnes API 取 URL，字符串替换占位符为 Agnes URL。单张失败（503/timeout）→ 用同一方式重试。
+**验证**：检查 HTML 中不再有 `__HERO_IMG__` / `__INNER_IMG_*__` 占位符，全部替换为 `agnes-ai.space` 的 URL
+**失败**：部分失败 → 对失败占位符单独重试生成（加大 timeout 或用 `provider="sese"` 回退）
+**恢复点**：对失败的占位符单独重试生成
 
 **Prompt 规则（三步合一，不拆三段）**：
 1. **视觉风格轮换**：从下表选对应选题的行，禁止连续2篇用同一风格
@@ -124,7 +124,12 @@ Phase 0 → Step 1 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → 
 2. **新建博文**：evaluate `querySelectorAll('div[role="button"]')` 遍历 textContent 含"新建博文"→ click
 3. **标题**：evaluate `querySelector('input[aria-label="标题"]')` → `.value = 标题` + dispatch input
 4. **标签**：evaluate `querySelectorAll('textarea[aria-label]')` 遍历含"标签/逗号/Label" → `.value = 'saving money, personal finance, budgeting, savings goals'` + dispatch
-5. **正文注入**：evaluate async → fetch(`http://localhost:8890/blogger_article.html`) → `cm.setValue(html)` → dispatch input/change
+5. **正文注入**（关键视图同步）：
+   - 先确保编辑器在 HTML 视图：`document.querySelector('[aria-label="切换视图"]')` → click 打开切换菜单 → `document.querySelector('[aria-label="切换视图"] [role="option"]:last-child')` → click 切到"撰写视图" → wait 1s → 再切回 HTML 视图：打开菜单 → 选最后一个 option → click（两次切换强制刷新编辑器的双向绑定）
+   - 然后 evaluate async → fetch(`http://localhost:8890/blogger_article.html`) → `document.querySelector('.CodeMirror').CodeMirror.setValue(html)`
+   - 注入后立即验证：`cm.CodeMirror.getValue().includes('<h2>')` 确认写入的是新文章
+   - 再切回"撰写视图"一次（触发 WYSIWYG 从 CodeMirror 重新渲染）
+   - 验证"已保存更改"出现或"发布/更新"按钮不再 disabled
 6. **发布**：evaluate 遍历 `div[role="button"]` → textContent 含"发布"且非"时间"且 !disabled → click
 7. **确认对话框**：browser_wait_for("确认") → evaluate 遍历 `div[role="button"]` → textContent==='确认' 且 offsetParent!==null → click
 8. **等待跳转**：browser_wait_for 3s → URL 回到 /blog/posts/
@@ -169,10 +174,12 @@ Phase 0 → Step 1 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → 
 | 1 | **长短句混搭**：每 3-4 句插 1 个极短句（3-8 词）| ✅ |
 | 2 | **真人过渡词**：≥2 处（Honestly / Look / You know / I'll be honest / Long story short）| ✅ |
 | 3 | **自嘲**：≥1 处 self-deprecating humor | ✅ |
-| 4 | **破坏平行结构**：连续 H3 开头句式不同（情感→数字→对话→场景→反直觉轮换）| ✅ |
+| 4 | **H3 内部结构错位**：连续 H3 用不同弧线（场景+数字 / 对话+引语 / 只描述不给方案 / 数据驱动 / 事前vs事后），且开头句式不同（情感→数字→对话→场景→反直觉轮换）| ✅ |
 | 5 | **口语化词汇 + Contractions**：≥5 个（I'm / it's / wasn't / didn't / that's）| ✅ |
 | 6 | **禁止总结句**：不出现 "The lesson is" / "This taught me" / "What I learned" / "In conclusion" / "The problem with X isn't Y" / "The pattern is universal" / "But here's the thing" / 双重情感并列表述 | ✅ |
-| 7 | **结尾无抽象说教**：最后 100 词必须是行动挑战或评论钩子。固定格式 `<p><b>Drop a comment:</b> What [topic] have you tried? I'd love to compare notes.</p>` | ✅ |
+| 7 | **结尾轮换**：最后 100 词必须是行动挑战或读者钩子。禁止连续2篇用同一结尾类型。可选类型：评论钩子 / 行动挑战 / 坦白 / 翻转 / 场景收束（回到开头的画面）| ✅ |
+| 8 | **Intro 开篇轮换**：禁止连续2篇用同一开篇结构。可选：场景碎片 / 对话截取 / 自招 / 问题 / 数据反衬 / 动作 | ✅ |
+| 9 | **第二声音**：全篇至少 1 处直接引语（朋友的原话、专家引语、自己当时的内心独白用引号）。禁止全篇只有"I said to myself"式独白 | ✅ |
 
 **检测方法**（写完全文后执行，不边写边修）：
 - 扫描全文找 6 类禁止句式
@@ -183,18 +190,23 @@ Phase 0 → Step 1 → Step 2 → Step 2a → Step 2d → Step 3 → Step 4 → 
 
 ## §2 字数与骨架
 
-### 骨架（2,000-2,500 词，固定 5 H3）
+### 骨架（2,000-2,500 词，5-7 H3，段数不固定）
 
-```
-块           段数  累计
-Intro         7段    7
-5 × H3       30段   37    每 H3=6 段（变切入角度）
-数字拆解      5段   42
-How-to        6段   48
-结尾+内链     3段   51
-```
+**H3 内部结构轮换**（同 §1a 标题公式轮换逻辑，禁止连续2个 H3 用同一弧线）：
 
-H3 标题必须包含 5 个分类数字（如"5 Categories"），与 Step 2d 的 h3≥5 一致。
+| 弧线类型 | 内部构成 | 说明 |
+|---------|---------|------|
+| 场景 + 数字 | 具体场景 → 查账发现 → 金额 | 开头有画面，结尾有冲击 |
+| 对话/引语 | 朋友说的话 → 我当时的反应 → 后来算的账 | 第二声音打破通篇独白 |
+| 只描述不给方案 | 我做了什么 → 花了多少 → **到此为止**，不写"怎么办" | 读者自己先想，方案留到 How-to |
+| 数据驱动 | NerdWallet 数据 → 我自己的对比 → 哪里不一样 | 外部事实撑腰，不是自说自话 |
+| 事前 vs 事后 | "买的时候我想……" → "现在回头看……" | 时间落差，自我打脸 |
+
+- 5 个 H3 必须用 **≥4 种弧线**
+- 至少 1 个 H3 **不写**"What I'll do now"
+- 至少 1 个 H3 包含**直接引语**（朋友的原话/专家的原话/自己当时的内心独白用引号）
+- 各 H3 长度不均——有的 3 段、有的 8 段，不追求块间平衡
+- 段数不设每块上限。Intro 可以短到 3 段或长到 12 段，取决于开篇策略
 
 ### 段落长度规则
 
@@ -219,12 +231,12 @@ H3 标题必须包含 5 个分类数字（如"5 Categories"），与 Step 2d 的
 
 ## §3 注入与发布技术细节
 
-### HTTP 服务器启动
+### HTTP 服务器启动（必须指定工作目录）
 
 ```bash
-cd "C:\Users\59314\claudework"
 python -c "
-import http.server
+import http.server, os
+os.chdir(r'C:\Users\59314\claudework')  # 显式 CD 防止 background 任务 CWD 飘移
 class CORSHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -233,7 +245,7 @@ http.server.HTTPServer(('localhost', 8890), CORSHandler).serve_forever()
 "
 ```
 
-端口 8890 已确认可用。冲突时换端口。注入后 `taskkill /f /pid <PID>` 杀掉（PID 从 Bash background 返回获取，不要 `taskkill /f /im python.exe`）。
+端口 8890 已确认可用。冲突时换端口。注入后 `taskkill /f /pid <PID>` 杀掉（PID 从 Bash background 返回获取，不要 `taskkill /f /im python.exe`）。服务器启动后必须验证 `http://localhost:8890/blogger_article.html` 返回的内容以 `&lt;h2&gt;` 开头、不含旧文章内容。若内容不对，杀了重启。
 ------
 
 ## §4 选择器速查
@@ -244,7 +256,7 @@ http.server.HTTPServer(('localhost', 8890), CORSHandler).serve_forever()
 |------|--------|--------|
 | "新建博文" | `querySelectorAll('div[role="button"]')` 遍历 textContent 含"新建博文" | `<div role="button">` |
 | 标题 | `input[aria-label="标题"]` | `.value = title` + dispatch input |
-| 正文注入 | fetch(localhost:8890/blogger_article.html) → `cm.setValue(html)` | 注入后验证 cm.getValue().length |
+| 正文注入 | fetch(localhost:8890/blogger_article.html) → `document.querySelector('.CodeMirror').CodeMirror.setValue(html)` | ⚠️ 必须先切到撰写视图再切回 HTML 视图以强制 sync，否则注入不生效。注入后验证 `cm.getValue().includes('<h2>')` |
 | 标签 | `textarea[aria-label]` 遍历含"标签/逗号/Label" | value = 'saving money, personal finance, budgeting, savings goals' |
 | "发布"/"更新" | `div[role="button"]` 遍历 textContent 含"发布/更新"且不含"时间"且 !disabled | 排除 textContent 含"时间" |
 | 确认对话框 | `div[role="button"]` 遍历 textContent==='确认' 且 offsetParent !== null | 非 `<button>`。可能有隐藏同名元素 |

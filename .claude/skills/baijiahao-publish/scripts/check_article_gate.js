@@ -32,6 +32,13 @@
   const imgCount = (rawHtml.match(/<img/g) || []).length;
   const imageSources = Array.from(rawHtml.matchAll(/<img[^>]+src="([^"]+)"/g)).map((m) => m[1]);
   const uniqueSources = new Set(imageSources.filter(Boolean));
+  // 🔴 2026-07-27 图片去重：全等或末尾 60 字符匹配即判定重复
+  const imageSrcTailCount = {};
+  for (const src of imageSources) {
+    const tail = src.slice(-60);
+    imageSrcTailCount[tail] = (imageSrcTailCount[tail] || 0) + 1;
+  }
+  const duplicateCount = Object.values(imageSrcTailCount).filter(c => c > 1).length;
   const signatureHtml = rawHtml
     .replace(/<p[^>]*>[^<]*请点击输入图片描述[^<]*<\/p>/gi, '')
     .replace(/<img[^>]*>/gi, '');
@@ -47,6 +54,8 @@
   if (textLen < 2200) warnings.push(`总字符偏少：${textLen}，建议≥2200`);
   if (contentParas < 42) hardFailures.push(`段数：${contentParas}<42`);
   if (sectionCount !== 6) hardFailures.push(`小节数：${sectionCount}≠6`);
+  // 🔴 2026-07-27 图片去重门：重复图直接熔断，不在 publish 阶段才拦
+  if (duplicateCount > 0) hardFailures.push(`图片重复：${duplicateCount}组重复（含末尾60字符匹配）`);
 
   // 🔴 段落长度闸门（2026-07-22 新增：任何段落 ≥81 字硬拦截，防止文字墙）
   const pTexts = rawHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [];

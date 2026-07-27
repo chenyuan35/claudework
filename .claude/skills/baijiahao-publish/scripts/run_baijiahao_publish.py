@@ -331,8 +331,7 @@ def emit_task(state: dict[str, Any]) -> dict[str, Any]:
         }
 
 
-def start(article: Path | None, title: str | None, keywords: list[str] | None = None,
-          restart: bool = False) -> dict[str, Any]:
+def start(restart: bool = False) -> dict[str, Any]:
     """
     启动管道：
     - restart=True（--start/--restart）：删除旧状态从头开始
@@ -356,20 +355,10 @@ def start(article: Path | None, title: str | None, keywords: list[str] | None = 
         "articleSha256": "",
         "injectFile": str((RUNTIME_DIR / "inject.js").resolve()),
         "title": "",
-        "keywords": keywords or [],
+        "keywords": [],
         "results": {},
         "failures": {},
     }
-
-    if article and title:
-        # 跳过 reasoning 阶段（stageIndex 0-3），从 validate_article（stageIndex 4）开始
-        article = article.resolve()
-        if not article.exists():
-            raise RuntimeError(f"BJH_ARTICLE_NOT_FOUND:{article}")
-        state["article"] = str(article)
-        state["articleSha256"] = hashlib.sha256(article.read_bytes()).hexdigest()
-        state["title"] = title
-        state["stageIndex"] = 4  # validate_article
 
     atomic_write_json(STATE_FILE, state)
     return emit_task(state)
@@ -516,9 +505,6 @@ def parse_args() -> argparse.Namespace:
     action.add_argument("--complete", action="store_true", help="完成当前阶段")
     action.add_argument("--fail", action="store_true", help="报告当前阶段失败")
     action.add_argument("--status", action="store_true", help="查看管道当前状态")
-    parser.add_argument("--article", type=Path, help="已写好的文章 HTML 文件路径（与 --start/--restart 配合）")
-    parser.add_argument("--title", help="文章标题（与 --article 配合）")
-    parser.add_argument("--keyword", action="append", default=[], help="标题关键词（可重复）")
     parser.add_argument("--stage", help="--complete / --fail 的阶段名称")
     parser.add_argument("--result", type=Path, help="--complete 的阶段结果 JSON 文件")
     parser.add_argument("--error", help="--fail 的错误描述")
@@ -529,9 +515,9 @@ def main() -> int:
     args = parse_args()
     try:
         if args.start or args.restart:
-            output = start(args.article, args.title, args.keyword, restart=True)
+            output = start(restart=True)
         elif args.resume:
-            output = start(args.article, args.title, args.keyword, restart=False)
+            output = start(restart=False)
         elif args.complete:
             if not args.stage or not args.result:
                 raise RuntimeError("--complete requires --stage and --result")
