@@ -22,6 +22,8 @@
 | 2026-08-04 | Fugui (Lacklock) | A 破局者 |
 | 2026-08-05 | Zhao Chunxiang (赵纯想 / Bellybook) | B 转型者 |
 | 2026-08-06 | James (悉尼程序员) | C 扩容者 |
+| 2026-08-07 | Yin Ming (阴明) | B 转型者 |
+| 2026-08-08 | Jason Yu (鱼总 / PaywallPro) | A 破局者 |
 
 ## Candidates ready for deep research
 
@@ -58,11 +60,12 @@
 | huiwang520 (roseduan) | V2EX | ¥20万+/9个月 | 技术课程变现，无失败时刻 |
 | yisier | V2EX | ¥17.4万/3年 | 卖掉了副业 |
 
-## Next pick (post #20)
-Last was **C 扩容者** (James, 08-06). Next should be **A 破局者**.
+## Next pick (post #22)
+Last was **A 破局者** (Jason Yu, 08-08). Next should be **C 扩容者**（B 已连续 2 次：Zhao 08-05、Yin Ming 08-07；A 刚发 08-08）。
 
 Top candidates for next round:
-- **cookiy** (A, ¥100K+/mo, Vibe Coding) — needs executability check
+- ~~cookiy~~ (A, ¥100K+/mo, Vibe Coding) — 可执行性校验失败（2026-08-08 搜索无公开可核实收入来源），移除
+- **TC and Siwei** (C, 7副业全年公开, YouTube) — 需可执行性校验（美国大厂夫妻博主，赛道匹配存疑）
 - **小朴** (B, $4K MRR, X/Twitter, Build in Public)
 - **傑克** (B, $5K/mo, YouTube)
-- **TC and Siwei** (C, 7副业全年公开, YouTube)
+- 出海去孵化器 Newsletter 存档候选（2026-08-08 扫描）：忠建/Sendflare (EP77)、玉伯/YouMind (EP74)、明皓/CreateWise（无具体收入数字，弃）

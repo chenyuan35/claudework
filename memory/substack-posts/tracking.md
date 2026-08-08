@@ -131,3 +131,21 @@
 **主角**: James，悉尼全栈开发者，10 年全职上班不辞职，第一个副业项目 $25K MRR，全年 ¥200 万+
 **核心打法**: 逆向推导法（从年入目标倒推客单价/转化率/每周粉丝数）+ 高客单价 + 按国家 IP 动态定价（东南亚 $8 / 欧洲 $8-12）+ 24h 亲自客服 + 90 天验证窗口 + 护城河=用户资产/SEO/团队
 
+| 2026-08-07 | Build in Public is Dead. This Founder Made $90K in One Month — Quietly. | B 转型者 | Yin Ming (阴明) | Juejin/掘金 → ByteDance → solo | ~$90K month one (seeu.food) | ~1,827 words | ✅ published |
+
+**URL**: https://mini559831.substack.com/p/build-in-public-is-dead-this-founder
+**Open URL**: https://open.substack.com/pub/mini559831/p/build-in-public-is-dead-this-founder
+**Hero Image**: ✅ Uploaded v2 (Agnes 1536x1024 → Substack CDN 1248x832, photorealistic young woman with chestnut-brown hair staring at phone, frustrated expression, food-logging laptop behind, city night bokeh — 2026-08-07 用户定稿：写实美女+内容对应+人物禁复用)
+**Tag**: indie hackers
+**主角**: Yin Ming（阴明），稀土掘金创始人，剑桥 CS，2020 被字节收购，离开后做"超级个体"
+**核心打法**: seeu.food 健康饮食 App（美国市场/80-90% 白人女性）Vibe Coding 单人开发；Reddit 私信冷启动（不投广告）；$9-15/月订阅 vs $0.0001 识别成本套利；首月 ~$90K；第二个月被抄袭到烂；结论=别 Building in Public、个人开发者别做 App、"AI 是会持续制造泡沫的未来"、7 天生命周期软件新常态
+
+| 2026-08-08 | $120K With No Code: How a Chinese PM Ran a 20-App Empire on 50/50 Splits | A 破局者 | Jason Yu (鱼总/@AI_Jasonyu) | 出海去孵化器 / X / PaywallPro | $120K 累计, 首月 $10K, 单品 $4K/月 | ~1,816 words | ✅ published |
+
+**URL**: https://mini559831.substack.com/p/120k-with-no-code-how-a-chinese-pm
+**Open URL**: https://open.substack.com/pub/mini559831/p/120k-with-no-code-how-a-chinese-pm
+**Hero Image**: ✅ Uploaded (Agnes 1536x1024 → Substack CDN 1248x832, photorealistic young woman with wavy black ponytail in grey hoodie studying paywall on phone amid scattered smartphones at 2am, warm lamp + blue screen glow)
+**Tag**: indie hackers
+**主角**: Jason Yu（鱼总），出海大厂 PM（不写代码）→ PaywallPro 创始人；3 年 20 App + 12 网站
+**核心打法**: 不写代码靠 50/50 分润雇"雇佣兵"开发（后升 80/20）；10% 定律（20 个产品仅 2-3 个赚钱）；僵尸产品等风口（像素头像 App 加吉卜力滤镜 $200→$4,000/月）；付费墙研究 500 App → PaywallPro（46,000+ iOS paywalls 数据库）；90% 订阅收入来自首次打开
+
