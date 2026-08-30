@@ -31,6 +31,7 @@ HOME = Path(os.environ.get("USERPROFILE", str(Path.home()))).resolve()
 WORKSPACE = HOME / "claudework"
 VAULT_REPO = HOME / "Documents" / "Obsidian Vault"
 VAULT_MEMORY = VAULT_REPO / "MEMORY"
+HERMES_HOME = HOME / "AppData" / "Local" / "hermes"
 STATE_ROOT = HOME / ".agent-memory"
 REPORT_ROOT = STATE_ROOT / "reports"
 BACKUP_ROOT = STATE_ROOT / "backups"
@@ -39,7 +40,7 @@ SOURCES: dict[str, Path] = {
     "dsh_curated": HOME / ".dsh" / "memory",
     "dsh_tencent": HOME / ".memory-tencentdb" / "memory-tdai",
     "codex_auto": HOME / ".codex" / "memories",
-    "hermes_local": HOME / "AppData" / "Local" / "hermes" / "memories",
+    "hermes_local": HERMES_HOME / "memories",
     "shared_vault": VAULT_MEMORY,
 }
 
@@ -252,6 +253,85 @@ def source_inventory(name: str, root: Path) -> dict[str, Any]:
     return inventory
 
 
+def inspect_hermes_memory_runtime(hermes_home: Path) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Inspect approval backlog and enabled memory-related cron jobs.
+
+    This is read-only. Pending writes are counted but never applied/rejected, and
+    cron state is read from jobs.json without invoking the scheduler.
+    """
+    pending_dir = hermes_home / "pending" / "memory"
+    pending_count = 0
+    if pending_dir.exists():
+        try:
+            pending_count = sum(1 for path in pending_dir.glob("*.json") if path.is_file())
+        except OSError:
+            pending_count = 0
+
+    jobs_path = hermes_home / "cron" / "jobs.json"
+    jobs: list[dict[str, Any]] = []
+    if jobs_path.exists():
+        try:
+            loaded = json.loads(jobs_path.read_text(encoding="utf-8-sig"))
+            raw_jobs = loaded.get("jobs", []) if isinstance(loaded, dict) else []
+            jobs = [item for item in raw_jobs if isinstance(item, dict)]
+        except (OSError, ValueError):
+            jobs = []
+
+    def is_memory_job(job: dict[str, Any]) -> bool:
+        haystack = " ".join(
+            str(job.get(key) or "")
+            for key in ("name", "script", "skill", "prompt")
+        ).lower()
+        return any(term in haystack for term in ("memory", "记忆", "vault", "obsidian"))
+
+    enabled_jobs = [job for job in jobs if job.get("enabled", True) and is_memory_job(job)]
+    failing_jobs: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+
+    if pending_count:
+        warnings.append(
+            {
+                "severity": "review",
+                "source": "hermes_local",
+                "message": f"发现 {pending_count} 条待审批内置记忆写入；需用户逐条批准或拒绝，禁止自动应用",
+            }
+        )
+
+    for job in enabled_jobs:
+        status = str(job.get("last_status") or "")
+        streak = int(job.get("failure_streak") or 0)
+        if status.lower() not in {"error", "failed", "failure"} and streak <= 0:
+            continue
+        job_id = str(job.get("id") or job.get("job_id") or "unknown")
+        name = str(job.get("name") or job_id)
+        failing_jobs.append(
+            {
+                "id": job_id,
+                "name": name,
+                "last_status": status,
+                "failure_streak": streak,
+            }
+        )
+        severity = "critical" if streak >= 3 else "review"
+        label = "连续失败" if streak >= 3 else "最近失败"
+        warnings.append(
+            {
+                "severity": severity,
+                "source": "hermes_local",
+                "message": f"记忆相关定时任务{label}：{name} ({job_id}, status={status}, streak={streak})",
+            }
+        )
+
+    return (
+        {
+            "pending_memory_writes": pending_count,
+            "enabled_memory_jobs": len(enabled_jobs),
+            "failing_memory_jobs": failing_jobs,
+        },
+        warnings,
+    )
+
+
 # ── content-level review (read-only; added 2026-08-26) ──────────────────────
 
 def curated_content_findings(root: Path) -> tuple[list[dict[str, str]], dict[str, Any]]:
@@ -438,6 +518,10 @@ def build_health() -> dict[str, Any]:
     sources = {name: source_inventory(name, root) for name, root in SOURCES.items()}
     warnings: list[dict[str, str]] = []
 
+    hermes_runtime, hermes_warnings = inspect_hermes_memory_runtime(HERMES_HOME)
+    sources["hermes_local"]["runtime"] = hermes_runtime
+    warnings.extend(hermes_warnings)
+
     for name, data in sources.items():
         if not data["exists"]:
             warnings.append({"severity": "critical", "source": name, "message": "记忆源不存在"})
@@ -575,11 +659,16 @@ def render_markdown(health: dict[str, Any]) -> str:
 
     tdai = health["sources"]["dsh_tencent"]
     codex = health["sources"]["codex_auto"]
+    hermes = health["sources"]["hermes_local"]
+    hermes_runtime = hermes.get("runtime") or {}
     shared = health["sources"]["shared_vault"]
     lines.extend(
         [
             "## 分层指标",
             "",
+            f"- Hermes 内置记忆：待审批 {hermes_runtime.get('pending_memory_writes', 0)} 条，"
+            f"启用记忆任务 {hermes_runtime.get('enabled_memory_jobs', 0)} 个，"
+            f"失败任务 {len(hermes_runtime.get('failing_memory_jobs') or [])} 个。",
             f"- DSH 腾讯记忆：对话分片 {tdai.get('conversation_shards', 0)}，记录分片 "
             f"{tdai.get('record_shards', 0)}，场景块 {tdai.get('scene_blocks', 0)}，"
             f"persona 备份 {tdai.get('persona_backups', 0)}，数据库检查 `{tdai.get('vectors_db_quick_check')}`。",
