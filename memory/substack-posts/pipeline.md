@@ -1,6 +1,6 @@
 # MINI Candidate Pipeline (2026-07-14)
 
-## Published (15 posts)
+## Published (44 posts, per live Substack archive 2026-09-17)
 | 日期 | 主角 | 类型 |
 |------|------|------|
 | 2026-07-04 | Sintone Li (野原新之栋) | A 破局者 |
@@ -24,7 +24,22 @@
 | 2026-08-06 | James (悉尼程序员) | C 扩容者 |
 | 2026-08-07 | Yin Ming (阴明) | B 转型者 |
 | 2026-08-08 | Jason Yu (鱼总 / PaywallPro) | A 破局者 |
-
+| 2026-08-13 | houzhongjian / qing1 (TempMail100 → Sendflare) | C 扩容者 |
+| 2026-08-14 | kulove (V2EX, 被裁→AI 全栈开发, $2.5K→$10K MRR) | B 转型者 |
+| 2026-08-15 | Haiming (海明Dev/@10xmylife, 特斯拉被裁→6 小组件 App ¥50万+) | A 破局者 |
+| 2026-08-16 | Jack Tse (傑克/傑克自動化, 加拿大, n8n 工作流→SaaS $5K/mo) | B 转型者 |
+| 2026-09-01 | ChillyRoom (凉屋游戏) | C 扩容者 |
+| 2026-09-02 | Cheng Pu (程普/weijunext/Jude Wei, Nexty.dev 模板) | A 破局者 |
+| 2026-09-03 | Yueluo (Uoxn, 垂直游戏运营 SaaS) | B 转型者 |
+| 2026-09-06 | TC and Siwei | C 扩容者 |
+| 2026-09-07 | He Zhiyan (droidHZ) | A 破局者 |
+| 2026-09-08 | Ryan Yao (Cat on Chair) | B 转型者 |
+| 2026-09-09 | Opacity (SetupYourPay / FuseCode) | C 扩容者 |
+| 2026-09-10 | xiaohongt3 (Chrome tab manager, V2EX) | A 破局者 |
+| 2026-09-12 | Owen Chen (ILLA Cloud) | B 转型者 |
+| 2026-09-13 | Zhao Chunxiang (赵纯想 / Laper) | C 扩容者 | ✅ Published 2026-09-13 (Laper 团队化新篇；08-05 写过 Bellybook B 型，本轮为 C 扩容者，$43,572 MRR Stripe-verified, 5人团队) |
+| 2026-09-14 | blueeon | A 破局者 | ✅ Published 2026-09-14 (5 months, 6 products, stable monthly revenue in the low tens of thousands of RMB; exact amount and sale price undisclosed) |
+| 2026-09-17 | Rainy × Kins (Capsule Studio / Manga Capsule) | B 转型者 | ✅ Published 2026-09-17 (2-year iOS manga reader; launch rating 1.2 → 4.8 from 281 ratings; buyout-first ¥48-68 / $9.99; revenue undisclosed, covers one person's living costs) |
 ## Candidates ready for deep research
 
 ### A 破局者
@@ -34,38 +49,36 @@
 | ~~Niko (鬼手)~~ | X/Twitter | $4K MRR | ✅ Published 2026-07-10 |
 | ~~Tony Dinh~~ | Indie Hackers | $45K/mo | ✅ Published 2026-07-13 |
 | ~~Chris Chen (Instapainting)~~ | Indie Hackers/YC | $32K/mo | ✅ Published 2026-07-12 |
+| ~~He Zhiyan (droidHZ)~~ | X / Juejin / Tencent Cloud / personal blog | self-reported $10K/mo; $990.28 at six months | ✅ Published 2026-09-07 |
+| ~~blueeon~~ | V2EX / OpenAI Developer Community / GitHub / ReadPo / Linkly AI | ¥10K+ monthly (low tens of thousands RMB; exact amount undisclosed) | ✅ Published 2026-09-14 |
 
 ### B 转型者
 | 候选 | 来源 | 收入 | 独特角 |
 |------|------|------|--------|
-| ~~Jon Yongfook~~ | Indie Hackers | $81K MRR → $1M ARR | ✅ Published 2026-07-16 |
 | 傑克 | YouTube | $5K/mo | 非技术背景→Vibe Coding→SaaS |
 | 小朴 | X/Twitter | $4K MRR | Build in Public 出海 |
+| ~~Owen Chen (ILLA Cloud)~~ | Indie Hackers / PR Newswire / GitHub / Product Hunt | $3M funding; $5K MRR; $30K/mo spend | ✅ Published 2026-09-12 |
+| ~~Yueluo~~ | V2EX / Uoxn | ¥10K+/month | ✅ Published 2026-09-03 |
+| ~~Ryan Yao (Cat on Chair)~~ | Starter Story / LinkedIn / App Store | $18K reported 30-day revenue; ~$80K sales in 8–9 months | ✅ Published 2026-09-08 |
 | ~~Damon Chen~~ | Indie Hackers | $1.3M ARR | ✅ Published 2026-07-08 |
-| ~~Chris Chen (Instapainting)~~ | Indie Hackers + HN | $384K/年 ($32K/mo) | ✅ Published 2026-07-12 |
+| ~~Chris Chen (Instapainting)~~ | Indie Hackers + HN | $384K/year ($32K/mo) | ✅ Published 2026-07-12 |
 | ~~Angus Cheng (BankStatementConverter)~~ | StarterStory/Indie Hackers | $40K MRR (2025) | ✅ Published 2026-07-16 |
 
 ### C 扩容者
 | 候选 | 来源 | 收入 | 独特角 |
 |------|------|------|--------|
+| ~~Opacity (SetupYourPay / FuseCode)~~ | Podcast / SetupYourPay / GitHub / X | $5K/mo passive; 200+ developers helped | ✅ Published 2026-09-09 |
 | ~~James (悉尼程序员)~~ | YouTube | $25K MRR | ✅ Published 2026-08-06 |
-| TC and Siwei | YouTube | 7副业全年公开 | 大厂+副业多元模型 |
-| ~~Ping He (何平)~~ | Indie Hackers | $255K/mo ($3M+/年) | ✅ Published 2026-07-17 |
-| ~~Liu Xiaopai (刘小排)~~ | Substack/X/Blog | ~$1M/年 | ✅ Published 2026-07-14 |
+| ~~TC and Siwei~~ | YouTube | $40K side income in 2025 / $64K in 2023 | ✅ Published 2026-09-06 |
+| ~~Ping He (何平)~~ | Indie Hackers | $255K/mo ($3M+/year) | ✅ Published 2026-07-17 |
+| ~~Liu Xiaopai (刘小排)~~ | Substack/X/Blog | ~$1M/year | ✅ Published 2026-07-14 |
 
 ### Other leads
 | 候选 | 来源 | 收入 | Notes |
 |------|------|------|-------|
-| Dan Ni (TLDR) | IH/YouTube | $10M+/年 | 已广为流传，非 under-the-radar |
+| Dan Ni (TLDR) | IH/YouTube | $10M+/year | 已广为流传，非 under-the-radar |
 | huiwang520 (roseduan) | V2EX | ¥20万+/9个月 | 技术课程变现，无失败时刻 |
 | yisier | V2EX | ¥17.4万/3年 | 卖掉了副业 |
 
-## Next pick (post #22)
-Last was **A 破局者** (Jason Yu, 08-08). Next should be **C 扩容者**（B 已连续 2 次：Zhao 08-05、Yin Ming 08-07；A 刚发 08-08）。
-
-Top candidates for next round:
-- ~~cookiy~~ (A, ¥100K+/mo, Vibe Coding) — 可执行性校验失败（2026-08-08 搜索无公开可核实收入来源），移除
-- **TC and Siwei** (C, 7副业全年公开, YouTube) — 需可执行性校验（美国大厂夫妻博主，赛道匹配存疑）
-- **小朴** (B, $4K MRR, X/Twitter, Build in Public)
-- **傑克** (B, $5K/mo, YouTube)
-- 出海去孵化器 Newsletter 存档候选（2026-08-08 扫描）：忠建/Sendflare (EP77)、玉伯/YouMind (EP74)、明皓/CreateWise（无具体收入数字，弃）
+## Next pick (post #45)
+Last was **B 转型者** (Rainy × Kins / Manga Capsule, 09-17); before that A (blueeon, 09-14), C (Zhao Chunxiang/Laper, 09-13), B (Owen Chen, 09-12) and A (xiaohongt3, 09-10). Next should be **C 扩容者**。

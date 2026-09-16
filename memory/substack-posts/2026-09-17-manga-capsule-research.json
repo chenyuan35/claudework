@@ -1,0 +1,69 @@
+{
+  "protagonist": {
+    "name": "Rainy",
+    "co创始人": "Kins (product/design)",
+    "studio": "Capsule Studio",
+    "product": "Manga Capsule (漫画胶囊)",
+    "app_store_id": "6737119574",
+    "site": "https://mangacapsule.com/",
+    "type": "B 转型者 (big tech -> full-time indie)"
+  },
+  "hard_data_2026_09_16": {
+    "cn_ratings": 281,
+    "cn_rating": 4.8,
+    "cn_rank": "#171 Books (top free)",
+    "version": "1.43 (2026-08-28)",
+    "cn_iap": [
+      "lifetime early-bird ¥48",
+      "lifetime ¥68",
+      "returning-user lifetime ¥58",
+      "monthly ¥6",
+      "quarterly ¥15",
+      "yearly ¥68",
+      "promo buyout ¥38/¥42"
+    ],
+    "us_iap": [
+      "Lifetime $9.99",
+      "Lifetime $6.99",
+      "Monthly $0.99",
+      "Yearly $7.99",
+      "Annual $9.99"
+    ],
+    "interview_aug_2026": {
+      "ratings": 269,
+      "rating": 4.8,
+      "best_books_rank": 149,
+      "launch_rating": 1.2
+    }
+  },
+  "sources": [
+    "V2EX 独立开发前线 interview t/1238843 (欧维, ~2026-09-05, 853 views)",
+    "Sspai post 103721 by rainy himself (2025-11-17) - origin story",
+    "App Store CN page id6737119574 (read 2026-09-16)",
+    "mangacapsule.com official site + EN blog (2026-01)",
+    "Ruan Yifeng weekly feature (per interview)"
+  ],
+  "failure_moments": [
+    "2020 startup died; he went to Xierqi to work at big tech",
+    "Quit with no revenue during a layoff winter; 2 months 'digital nomad' then Beijing City Library 10-5 desk",
+    "A full year full-time, still unlaunched; no income, savings burning; arguments with Kins; near-despair, meditation, night walks",
+    "Shipped a rough build; 1.2 stars, only 5-star review his own; a long RedNote post trashed them; dared not promote",
+    "Paid RedNote 薯条 promotion flopped",
+    "Competitors vibe-coded in a month and shipped"
+  ],
+  "playbook": [
+    "Pick a tool you use daily (dogfooding)",
+    "Streaming parse as architecture moat (format-by-format, no OSS reuse)",
+    "Compatibility-test with thousands of real files before launch",
+    "Ship the ugly version to collect the complaint list",
+    "Iterate the complaint list ~4-5 months to move the score",
+    "Buyout-first pricing for 'ownership' users (¥48-68 / $6.99-9.99)",
+    "Content for concrete needs ('reading manga on iPad', 'NAS manga reader') over one-off blogger spikes"
+  ],
+  "quotes": [
+    "大厂来的晚了，真的是汤都喝不上了。",
+    "AI 写代码太容易了，所以经常会一下给你几千上万行。",
+    "人生是自己的，不能把人生的决策压在「我是幸运的」这种虚无缥缈的叙事上。"
+  ],
+  "human_reading_notes": "not yet read"
+}
