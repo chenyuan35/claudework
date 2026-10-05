@@ -26,24 +26,24 @@
     "skill_fix",
     "cleanup"
   ],
-  "topic": "朋友圈社交圈",
-  "title": "",
-  "article_file": "C:\\Users\\59314\\claudework\\wechat_article_social_circle.txt",
+  "topic": "父母生病后的家庭分工",
+  "title": "父母生病以后，兄弟姐妹怎么分担：先把这四笔账说清楚",
+  "article_file": "C:\\Users\\59314\\claudework\\wechat_article_zz_parent_hospital_costs.txt",
   "cdn_urls": [
-    "https://mmbiz.qpic.cn/sz_mmbiz_png/TEemy0nIxOZHy0ogFjyCbd1ItcSvHcbAaQdiaaLc9lVuI7ggiagtxbib2UBVXGRWTuEh0Q9QKMicT0dUibwYNHNofTA82ic7yvSKQLIR5iaZe6SAA8/0?wx_fmt=png",
-    "https://mmbiz.qpic.cn/sz_mmbiz_png/TEemy0nIxOa6zib7QfnKpQKuRGDc8VfypUwPkNpBpUaYPPGdKPWCAlKp1wgWSvnKDNRC5zTbr8hYTVy9nKlNQbq031DTfLUREGMichLK54EO0/0?wx_fmt=png",
-    "https://mmbiz.qpic.cn/mmbiz_png/TEemy0nIxObQx5O5qdf6qayibefRRScvWB8IrjrP5wQuVib2S9gxJTBlhM6icN1VkDJMINiblicXia4PyZibIElU1BcRD8A3r4pUuDCc9tez4z1DXI/0?wx_fmt=png"
+    "https://mmbiz.qpic.cn/sz_mmbiz_png/TEemy0nIxOZq0kzYRWzia6wlWPorsatGhjBOz3UOssDupibsIbibKJicLQAJFe8gpvxvK80bvbvrUSvwYOialH18k3zrly9LComRiaEicO4iaicQHyWk/0?wx_fmt=png&from=appmsg",
+    "https://mmbiz.qpic.cn/mmbiz_png/TEemy0nIxOYNM5YNyicJD8Tgx5STJWOZCPMduoBu5Lvu6B4mXdxEmX8ykauvDCogsTFx04sYTpJlYXNFZr34IJ6uOArpApcv5yicxScpaTSmA/0?wx_fmt=png&from=appmsg",
+    "https://mmbiz.qpic.cn/mmbiz_png/TEemy0nIxOaktKLdumWanXVlOwCQU6Fb4LdUDtic1l48ZEbXW50obCKQQnfia0enwKTMrXMq6TrLOfrEbjKuW45VGVthAzEcv7KiaPbMvKVLhE/0?wx_fmt=png&from=appmsg"
   ],
-  "draft_url": "",
-  "appmsgid": "100000311",
-  "token": "",
-  "created_at": "2026-07-21T00:12:34.559637",
-  "updated_at": "2026-07-21T00:20:06.529821",
-  "errors": [
-    "cover: failed after 2 retries",
-    "cover: WeChat Vue dialog incompatible with automation, set cover manually then publish"
-  ],
+  "draft_url": "https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit&action=edit&type=77&appmsgid=100000414&token=988981729&lang=zh_CN",
+  "appmsgid": "100000414",
+  "token": "988981729",
+  "created_at": "2026-07-29T16:01:34.138672",
+  "updated_at": "2026-07-29T16:22:22.394618",
+  "errors": [],
   "logs": [],
+  "dedup_result": "PASS：2026-07-29 实时提取已发表列表前20条，标题无完全重复或主题框架高度重叠",
   "cors_port": 8768,
-  "cover_ok": false
+  "cover_ok": true,
+  "save_verified": true,
+  "save_evidence": "历史版本出现手动保存；保存后DOM复验标题、作者、2505汉字、3张CDN正文图及封面均保留"
 }

@@ -311,8 +311,6 @@ def post_check(skill_name: str, task_id: str, result_files: list | None = None) 
         {"name": "POST-02: cleanup", "severity": "info", "pass": True,
          "detail": f"kept={k} deleted={d}"}
     ]}
-
-
 def audit_mode(p: Path) -> dict:
     if not p.exists(): return {"pass": False, "error": f"file not found: {p}"}
     text = read_skill_text(p)

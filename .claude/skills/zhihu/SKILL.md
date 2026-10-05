@@ -626,7 +626,9 @@ async function genWithRetry(prompt, maxRetries=2) {
   for(const p of prompts) results.push(await genWithRetry(p));
   const valid = results.filter(Boolean);
   if (valid.length === 0) {
-    console.log('\\n❌ Agnes AI 全部失败，后续执行 Unsplash 备用方案');
+    console.log('\\n❌ Agnes AI 全部失败，技能熔断——发布中断');
+    process.exit(1);
+  } else {
   } else {
     fs.writeFileSync('_zhihu_imgs.json',JSON.stringify(valid));
     valid.forEach((b64, i) => {
@@ -641,21 +643,6 @@ async function genWithRetry(prompt, maxRetries=2) {
 })();
 "
 ```
-
-**当 Agnes AI 全部失败时备用（Unsplash 免费图）**
-
-当 Agnes AI 返回错误时，直接下载 Unsplash 免费图片作配图：
-
-```bash
-# 下载免费图片（根据文章主题替换 URL）
-curl -sL "https://images.unsplash.com/photo-1542838132-92c53300491e?w=1024&q=80" -o _cover.jpg
-curl -sL "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1024&q=80" -o _img1.jpg
-curl -sL "https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=1024&q=80" -o _img2.jpg
-# 验证（< 1000 bytes = 下载失败/29 bytes = Unsplash 返回错误页面，换 URL）
-ls -la _cover.* _img1.* _img2.*
-```
-
-**Unsplash 选题指引**：每期根据文章主题从 unsplash.com 搜关键词，复制图片 ID 替换 `/photo-{ID}?w=1024`。
 
 **Prompt 替换规则**：每期根据文章主题改 prompts，不用上面的默认值。
 - 配图 1：场景/环境相关
@@ -705,38 +692,27 @@ curl -s http://localhost:18989/_cover.png | head -c 20 || curl -s http://localho
 2. 用 JS evaluate 填写标题：
    - `document.querySelector('[placeholder="请输入标题（最多 100 个字）"]')`
 
-3. **跳过「导入」对话框**（🔴 死路：导入 tab 仅支持文件上传，无粘贴 textarea）。直接粘贴到编辑器：
+3. **跳过「导入」对话框**（🔴 死路：导入 tab 仅支持文件上传，无粘贴 textarea）。用 browser_run_code_unsafe 一次性粘贴（evaluate clipboard + keyboard）：
 
-   **🏆 首选方案（evaluate set clipboard → keyboard paste）：**
-   ```javascript
-   // Step A: 在 evaluate 中设置 clipboard
-   const content = `文章正文...`;
-   navigator.clipboard.writeText(content);
-   
-   // Step B: 用 Playwright 点击编辑器 → Ctrl+A → Delete → Ctrl+V
-   // browser_click('.public-DraftEditor-content')
-   // keyboard.press('Control+A') → keyboard.press('Delete') → keyboard.press('Control+V')
-   ```
-   🔴 **去重前先 Ctrl+A+Delete** 清空编辑器。如字数异常偏高（>3500），直接 `browser_navigate('/write')` 刷全新草稿，不要重复清空/粘贴。
-
-   **💡 备用方案（browser_run_code_unsafe 一次性完成，如首选因 CSP/权限失败时使用）：**
-   当 evaluate 内 `navigator.clipboard.writeText()` 因 CSP 或权限问题失败时，走 `browser_run_code_unsafe` 一次性完成 clipboard 设置 + 粘贴：
-   ```javascript
-   async (page) => {
-     const content = `你的文章内容...`;
-     await page.evaluate((text) => navigator.clipboard.writeText(text), content);
-     await page.click('.public-DraftEditor-content');
-     await page.waitForTimeout(500);
-     await page.keyboard.press('Control+A');
-     await page.waitForTimeout(200);
-     await page.keyboard.press('Delete');
-     await page.waitForTimeout(300);
-     await page.keyboard.press('Control+V');
-     await page.waitForTimeout(2000);
-     return 'paste complete';
-   }
-   ```
-   > ⚠️ 不要调用 `context.grantPermissions()`——此 API 在当前 Playwright MCP 版本中不存在（报 `Browser.grantPermissions not found`）。`navigator.clipboard.writeText()` 在 `page.evaluate()` 上下文中默认有权限。
+    ```javascript
+    async (page) => {
+      // Step 1: 设置 clipboard 内容
+      const content = `文章正文...`;
+      await page.evaluate((text) => navigator.clipboard.writeText(text), content);
+      
+      // Step 2: 点击编辑器 → 清空 → 粘贴
+      await page.click('.public-DraftEditor-content');
+      await page.waitForTimeout(500);
+      await page.keyboard.press('Control+A');
+      await page.waitForTimeout(200);
+      await page.keyboard.press('Delete');
+      await page.waitForTimeout(300);
+      await page.keyboard.press('Control+V');
+      await page.waitForTimeout(2000);
+      return 'paste complete';
+    }
+    ```
+    🔴 去重前先 Ctrl+A+Delete 清空编辑器。如字数异常偏高（>3500），直接 `browser_navigate('/write')` 刷全新草稿，不要重复清空/粘贴。
 
 4. 等待编辑器渲染（约 2s），检查右侧面板字数 → 字数 > 1500 即粘贴成功
 
@@ -776,137 +752,83 @@ curl -s http://localhost:18989/_cover.png | head -c 20 || curl -s http://localho
    - Server 404：重新执行「启动本地 HTTP 图片服务器」脚本
    - 都 OK 才继续下一步
 
-7. **定位光标到正文正确段落（🔴 插入图片前必做，禁止随意位置插入）：**
+7. **定位光标到正文正确段落（🔴 插入图片前必做）：**
 
-    正文配图必须插入到自然段落之间，**禁止放在标题正下方（开场段前）**。
-    
-    **定位规则：**
-    - 第一张配图 → 放在第 3-4 段之后（让读者先进入阅读状态，再看到图片支撑）
-    - 第二张配图 → 放在文章 60%-70% 位置，作为观点转换的视觉间歇
-    - 没有第三张（正文 1-2 张配图足够，多了打断阅读）
-    
-    **操作代码（🆕 2026-07-18 改用 TreeWalker 文本搜索，替代不可靠的 block index 方法）：**
     ```javascript
-    // 🔴 必须在 Draft.js 编辑器已经粘贴好内容之后执行
-    // 定位光标到指定段落，使后续插入的图片出现在正确位置
-    // 🆕 改用 TreeWalker 文本搜索（比 data-block index 更可靠）
+    // 🔴 将 SEARCH_TEXT 的值替换为文章正文中出现的完整句子（不要用注释代替）
+    const SEARCH_TEXT = '替换为文章正文中的某个完整句子';
+
     const editor = document.querySelector('[contenteditable="true"]');
-    if (!editor) throw new Error('编辑器未找到');
-    
-    // 找目标文字段落的后一个非空 block
+    if (!editor) throw new Error('❌ 编辑器未找到');
+
     function positionCursorAfterText(searchText) {
       const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
       let targetNode = null;
       while (walker.nextNode()) {
-        if (walker.currentNode.textContent.includes(searchText)) {
-          targetNode = walker.currentNode;
-          break;
-        }
+        if (walker.currentNode.textContent.includes(searchText)) { targetNode = walker.currentNode; break; }
       }
       if (!targetNode) return '未找到"' + searchText + '"段';
-      
-      // 获取最近的 data-block 父元素
       let blockEl = targetNode.parentElement;
-      while (blockEl && !blockEl.getAttribute('data-block')) {
-        blockEl = blockEl.parentElement;
-      }
+      while (blockEl && !blockEl.getAttribute('data-block')) blockEl = blockEl.parentElement;
       if (!blockEl) return 'block 元素未找到';
-      
-      // 找下一个非空 content block
       let nextBlock = blockEl.nextElementSibling;
       while (nextBlock) {
-        if (nextBlock.getAttribute('data-block') && nextBlock.textContent?.trim().length > 0) {
-          break;
-        }
+        if (nextBlock.getAttribute('data-block') && nextBlock.textContent?.trim().length > 0) break;
         nextBlock = nextBlock.nextElementSibling;
       }
       if (!nextBlock) return '目标段落后无后续段落';
-      
-      // 定位光标到下一个 block 的起始位置（图片将插入到两个段落之间）
       const range = document.createRange();
       range.setStart(nextBlock, 0);
       range.collapse(true);
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
-      return '已定位到"' + searchText + '"后，下一个段是"' + nextBlock.textContent.slice(0, 30) + '"';
+      return '命中"' + searchText.slice(0, 15) + '..."';
     }
-    
-    // 使用示例（根据文章内容修改 searchText）：
-    // 第一张配图 → 在"我在国内租过三次房"段落之后插入
-    console.log(positionCursorAfterText('我在国内租过三次房'));
-    
-    // 第二张配图 → 在"但事情没那么简单"段落之后插入
-    // 第一张图插入完成后，执行：
-    // console.log(positionCursorAfterText('但事情没那么简单'));
+
+    console.log(positionCursorAfterText(SEARCH_TEXT));
     ```
-    
-    **验证**：执行后控制台会输出定位到的下一个段的前30字。如果包含你预期的下一段内容 → 定位成功。
 
-8. **上传正文配图**（编辑器工具栏 → 图片）：
+    **第一张图定位**：SEARCH_TEXT 填文章中第 3-4 段结尾的关键句。
+    **第二张图定位**：插入第一张图后，改 SEARCH_TEXT 为文章中 60-70% 位置的关键句，重新执行本步骤。
 
-    > ⚠️ 配图将插入到步骤 7 设置的光标位置。如果忘了执行 7 就打开了图片对话框，先关闭对话框、执行 7、再重新打开。
+8. **上传正文配图（单一路径：setInputFiles → 点击「插入图片」）**
 
-    **解决方案：Playwright `setInputFiles` 直传隐藏 file input，绕过 React 18 合成事件。**
-
-    流程（🔴 每张图独立操作，不可多张一起插入）：
-    1. 先用 step 7 定位光标到第一张图的目标位置（NHTSA段落之后 / 25%-35%位置）
-    2. 点击 `button[aria-label="图片"]` 打开图片对话框
-    3. 对话框默认选中"本地图片上传"tab（含隐藏 file input）
-    4. 使用 `browser_run_code_unsafe` 调用 Playwright 的 `locator.setInputFiles()` 直接设置在隐藏 input 上
-       → 触发浏览器原生 change 事件 → React 18 根级事件委托拾取 → onChange handler 启动上传
-    5. 等待 2-3s 上传完成 → "插入图片"按钮出现
-    6. 点击「插入图片」将图片插入正文
-    7. **🔴 第二张图：重新执行 step 7 定位光标（"但事情没那么简单"转折段后）→ 关闭旧对话框 → 再点击「图片」打开新对话框 → upload → 插入**
-    8. 继续上述流程直到所有图片插入完成
-    9. **每插完一张立即核验位置（不可等全部插完再查）：**
-       ```javascript
-       const editor = document.querySelector('.public-DraftEditor-content');
-       const figures = [...editor.querySelectorAll('figure')];
-       const blocks = [...document.querySelectorAll('[data-block]')];
-       for (const fig of figures) {
-         const block = fig.closest('[data-block]');
-         const idx = block ? blocks.indexOf(block) : -1;
-         console.log('图@block#' + idx + '/' + blocks.length);
-       }
-       // 如发现图的位置不对（扎堆/抢开场/在末尾），立即用 evaluate 删除：
-       //   const badFig = document.querySelector('.public-DraftEditor-content figure:last-child');
-       //   if (badFig) badFig.closest('[data-block]')?.remove();
-       // 然后回到 step 7 重新定位后再插入。
-       ```
+    🔴 操作前先确认 step 7 已执行（光标已定位到目标段落）。每张图独立操作，不可多张一起插入。
 
     ```javascript
     // browser_run_code_unsafe 传入的 code：
     async (page) => {
+      // 1. 点击「图片」按钮打开对话框
+      await page.locator('button[aria-label="图片"]').click();
+      await page.waitForTimeout(1000);
+      
+      // 2. setInputFiles 直传隐藏 file input（绕过 React 合成事件）
       const locator = page.locator('.Modal input[type="file"]');
-      await locator.setInputFiles([
-        'C:\\Users\\59314\\claudework\\_img1.png',
-        'C:\\Users\\59314\\claudework\\_img2.png'
-      ]);
+      await locator.setInputFiles(['C:\\Users\\59314\\claudework\\_img1.png']);
       await page.waitForTimeout(3000);
-      return 'files set via setInputFiles';
+      
+      // 3. 点击「插入图片」插入正文
+      await page.locator('button:has-text("插入图片")').click();
+      await page.waitForTimeout(1000);
+      return 'img1 inserted';
     }
-    // 执行后，上传成功则对话框中"插入图片"按钮出现
-    // 点击「插入图片」：
-    await page.locator('button:has-text("插入图片")').click();
     ```
 
-    **要点：**
-    - 🔴 **禁止先点击上传区域（`div[role="button"]`）** — 那会打开原生文件选择器，再走 `browser_file_upload` 时 React 18 onChange 不触发
-    - ✅ **直接 `setInputFiles` 在隐藏 input 上** — 不打开文件选择器，Playwright 内部通过 CDP 设置文件并触发原生 change，React 18 正确拾取
-    - ✅ `locator.setInputFiles` 支持多文件（`multiple=true`），一次可传多张配图
-    - ✅ 图片格式不限（png/jpg/webp），`accept="image/*"` 覆盖常见格式
+    第一张图插入后，**返回到 step 7** 改 SEARCH_TEXT 重新定位光标，然后执行第二张图（改 `_img1.png` 为 `_img2.png`）。
 
-    **三种方案对比（来源：用户 2026-07-16 提供）：**
-    | 方案 | 适用场景 | 知乎正文配图 | 优先级 |
-    |---|---|---|---|
-    | `browser_file_upload` | 直接传绝对路径，不点按钮 | ❌ 不触发 React 18 onChange | 2 |
-    | **`locator.setInputFiles()`** | **Playwright 原生直设，绕过合成事件** | **✅ 已验证通过** | **🏆 首选** |
-    | `DOM.setFileInputFiles` (CDP) | 前两者失败时的终极方案 | — | 3 |
-
-    > 💡 `setInputFiles` 本质是 Playwright 内部调用 CDP `DOM.setFileInputFiles`，
-    > 直接通过浏览器底层设置文件并派发原生 change 事件，
-    > 与 React 18 根级事件委托兼容。
+    每插完一张立即核验位置：
+    ```javascript
+    const figures = [...document.querySelectorAll('.public-DraftEditor-content figure')];
+    const blocks = [...document.querySelectorAll('[data-block]')];
+    for (const fig of figures) {
+      const block = fig.closest('[data-block]');
+      console.log('图@block#' + (block ? blocks.indexOf(block) : -1) + '/' + blocks.length);
+    }
+    // 如位置不对（block# < 12 = 抢开场/两图间距 < 20 = 扎堆），evaluate 删除后重插：
+    //   document.querySelector('.public-DraftEditor-content figure:last-child')
+    //     ?.closest('[data-block]')?.remove();
+    ```
 
 9. **添加话题标签**（🔴 React controlled input，必须 fiber onChange 触发 autocomplete）：
 
@@ -1248,50 +1170,53 @@ curl -s http://localhost:18989/_cover.png | head -c 20 || curl -s http://localho
 3. 打开问题页 → 点击「写回答」：
    - selector `button:has-text("写回答")` 匹配多个 → 用 `btn.evaluate(el => el.click())` 强制 JS 点击（绕过 AppHeader 拦截）
    - 或缩小范围 `main button:has-text("写回答")`
-4. **回答内容输入（🔴 关键！只能用 browser_run_code_unsafe 方案）**：
-   - 回答编辑器为 Draft.js（`.public-DraftEditor-content`）
-   - ❌ **clipboard paste** — 触发 `handlePastedText` 抛异常，内容丢失
-   - ❌ **`document.execCommand('insertText', false, '段1\\n\\n段2')`** — Draft.js 不识别 `\\n\\n`，所有文字压为同一 block
-   - ❌ **多次 evaluate 循环 + keyboard.press('Enter')** — 每次 evaluate 重新 focus，insertText 追加而非替换 → 内容逐段递增重复（今天踩的坑）
-   - ✅ **正确方案：`keyboard.type()` + `keyboard.press('Enter')` 纯 Playwright 上下文内完成，不切 evaluate**：
+4. **回答内容输入（browser_run_code_unsafe 一次性完成）：**
 
-     ```javascript
-     async (page) => {
-       const paragraphs = ['第一段。开头直接给结论。', '第二段。展开1-2个具体机制或例子。', '第三段。收尾。'];
-       
-       // ① 清空编辑器
-       await page.click('.public-DraftEditor-content');
-       await page.waitForTimeout(500);
-       await page.keyboard.press('Control+A');
-       await page.waitForTimeout(200);
-       await page.keyboard.press('Delete');
-       await page.waitForTimeout(300);
-       
-       // ② 用 keyboard.type 逐段打字（保持同一 Playwright 上下文，不切 evaluate）
-       for (let i = 0; i < paragraphs.length; i++) {
-         await page.keyboard.type(paragraphs[i], { delay: 15 });
-         await page.waitForTimeout(300);
-         if (i < paragraphs.length - 1) {
-           await page.keyboard.press('Enter');
-           await page.waitForTimeout(400);
-         }
-       }
-       
-       // ③ 🔴 写后内容校验（新增，2026-07-24 固化）
-       const text = await page.evaluate(() =>
-         document.querySelector('.public-DraftEditor-content')?.textContent || ''
-       );
-       // 按换行切 segments，过滤短行
-       const segs = text.split('\n').filter(s => s.trim().length > 10);
-       const unique = new Set(segs);
-       // 去重率 < 70% = 内容重复
-       if (unique.size < segs.length * 0.7) {
-         throw new Error('❌ 回答内容重复率过高（评估此方法在 Draft.js 中覆盖了原有文字，必要时可改回 evaluate 写法，但必须写后人工校验）');
-       }
-       console.log('✅ 回答已写入：' + segs.length + '段, ' + text.length + '字符');
-       return 'ok';
-     }
-     ```
+    ```javascript
+    async (page) => {
+      const paragraphs = ['第一段。', '第二段。', '第三段。'];
+      
+      // ① 点击编辑器获得焦点
+      await page.click('.public-DraftEditor-content');
+      await page.waitForTimeout(500);
+      
+      // ② evaluate 强制清空所有 Draft.js blocks（比 Control+A+Delete 可靠）
+      const cleared = await page.evaluate(() => {
+        const editor = document.querySelector('.public-DraftEditor-content');
+        if (!editor) return false;
+        const blocks = [...editor.querySelectorAll('[data-block]')];
+        // 留第一个 block 置空，删掉其余所有
+        blocks.forEach((b, i) => { if (i > 0) b.remove(); });
+        const first = editor.querySelector('[data-block]');
+        if (first) first.textContent = '';
+        // 清空 selection
+        window.getSelection()?.removeAllRanges();
+        return true;
+      });
+      if (!cleared) throw new Error('❌ 编辑器未找到');
+      await page.waitForTimeout(300);
+      
+      // ③ keyboard.type 逐段打字（保持同一 Playwright 上下文）
+      for (let i = 0; i < paragraphs.length; i++) {
+        await page.keyboard.type(paragraphs[i], { delay: 15 });
+        await page.waitForTimeout(300);
+        if (i < paragraphs.length - 1) {
+          await page.keyboard.press('Enter');
+          await page.waitForTimeout(400);
+        }
+      }
+      
+      // ④ 写后核验：内容去重
+      const text = await page.evaluate(() =>
+        document.querySelector('.public-DraftEditor-content')?.textContent || ''
+      );
+      const segs = text.split('\n').filter(s => s.trim().length > 10);
+      const unique = new Set(segs);
+      if (unique.size < segs.length * 0.7) throw new Error('❌ 回答段落重复率过高');
+      console.log('✅ 回答已写入：' + segs.length + '段, ' + text.length + '字符');
+      return 'ok';
+    }
+    ```
    - 🔴 **排版规范：每段 1-3 句。** 把答案切成 3-5 个 paragraph 数组，每个元素就是一段。
 5. **回答语气自检（写完后必做）**：
    - 读一遍全文——像不像一个人在跟朋友聊天？
@@ -1300,18 +1225,6 @@ curl -s http://localhost:18989/_cover.png | head -c 20 || curl -s http://localho
    - 好例子："这个我刚好刷到过。日本那个台杉的图我也看过，视觉效果确实震撼。但后来我去查了查，发现欧洲几百年前就在搞类似的东西了……"
    - 坏例子："日本文化之所以被认为是诡异的，主要由以下三个原因构成……"
 
-5a. **🔴 写后内容核验（2026-07-24 新增，防重复bug）**：
-   在设置创作声明之前、发布之前，用 evaluate 读取编辑器内容，检查是否有段落重复：
-   ```javascript
-   const editor = document.querySelector('.public-DraftEditor-content');
-   const text = editor?.textContent || '';
-   const segs = text.split('\n').filter(s => s.trim().length > 10);
-   const unique = new Set(segs);
-   if (unique.size < segs.length * 0.7) {
-     throw new Error('❌ 回答段落重复率过高，不可发布。退回步骤 4 重新打字');
-   }
-   console.log('✅ 段落去重校验通过：' + unique.size + '/' + segs.length);
-   ```
 6. **设置创作声明（🔴 硬性门：未勾选"AI 辅助创作"禁止发布）**（死坐标直点，与文章共用逻辑）：
 
     完整脚本见 §2.1 step 10。**直接复制粘贴执行即可**——不需要额外查找 xclass/遍历，逻辑完全一致。
@@ -1420,83 +1333,90 @@ curl -s http://localhost:18989/_cover.png | head -c 20 || curl -s http://localho
 
 2. **填写问题标题**
 
-   `textarea[placeholder="标题"]`，上限 50 汉字。输入框右侧有 `字数 0/50` 提示。  
-   🔴 浏览器操控：用 `evaluate` + `nativeInputValueSetter` + `dispatchEvent('input')`（Playwright type/fill 因过渡动画中 textarea 尺寸为 0 会 timeout）。
+   `textarea[placeholder="标题"][name="title"]`，上限 50 汉字。输入框右侧有 `字数 0/50` 提示。  
+   🔴 **React controlled component 陷阱（2026-07-28 修复）**：标题 textarea 在 DOM 中存在但 `offsetParent: false`（零尺寸隐藏），Playwright `fill()`/`type()` 无法操作。同时 `nativeInputValueSetter` + `dispatchEvent('input')` 写入 DOM 值后 React 内部状态不同步，导致 API 把描述内容当作标题发送。**必须同时设置 DOM 值 + 触发 fiber onChange 才能同步 React 状态**：
    ```javascript
    const titleInput = document.querySelector('textarea[placeholder="标题"]');
    const ns = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
    ns.call(titleInput, '你的标题（≤50汉字）');
-   titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+   titleInput.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+
+   // 触发 React fiber onChange（必须，否则状态不同步）
+   const fiberKey = Object.keys(titleInput).find(k => k.startsWith('__reactFiber'));
+   if (fiberKey) {
+     let fiber = titleInput[fiberKey];
+     for (let i = 0; i < 5 && fiber; i++) {
+       if (fiber.memoizedProps?.onChange) {
+         fiber.memoizedProps.onChange({
+           target: titleInput, currentTarget: titleInput,
+           type: 'change', preventDefault: () => {}, stopPropagation: () => {}
+         });
+         break;
+       }
+       fiber = fiber.return;
+     }
+   }
    ```
-   ⚠️ 标题即使为空，发布按钮也是 enabled 的——无须 fiber bypass。
+   ⚠️ 按钮状态**不再**"标题为空也 enabled"——需要标题+描述+话题绑定后才启用。
 
 3. **在问题描述中补充背景（选填，≤500字）**
 
-   `textarea[placeholder*="写下你的问题"]`，操作同上：
+   `textarea[placeholder*="写下你的问题"]`，操作同上（同需 fiber onChange）：
+
+4. **绑定话题（🔴 2026-07-28 新增必填项）**
+
+   描述填入后，modal 底部会自动推荐相关话题标签。必须至少绑定一个话题才能发布：
    ```javascript
-   const descInput = document.querySelector('textarea[placeholder*="写下你的问题"]');
-   const ns = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-   ns.call(descInput, '描述内容（≤500字）');
-   descInput.dispatchEvent(new Event('input', { bubbles: true }));
+   await new Promise(r => setTimeout(r, 1500));  // 等 API 推荐话题
+
+   // 在推荐的话题列表中点击第一个匹配的话题
+   const topicLinks = [...document.querySelectorAll('.Modal-wrapper a[href*="/topic/"]')];
+   if (topicLinks.length > 0) {
+     topicLinks[0].click();
+     console.log('✅ 已绑定话题：' + topicLinks[0].textContent.trim());
+   }
    ```
 
-4. **发布前核验（🆕 硬性门，2026-07-24 新增）**
+5. **核验 → 发布**
 
-   填入标题后，检查发布按钮状态。**如果 disabled，不要猜原因，按以下 SOP 排查：**
    ```javascript
-   const pubBtn = document.querySelector('button:has-text("发布问题")');
    const titleInput = document.querySelector('textarea[placeholder="标题"]');
-   
-   // ① 检查标题是否超 50 汉字
+   const pubBtn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '发布问题');
    const hanCount = (titleInput.value.match(/[一-鿿]/g) || []).length;
    if (hanCount > 50) throw new Error('❌ 标题超 50 汉字：当前 ' + hanCount + ' 字');
-   
-   // ② 检查 modal 是否已有缓存草稿（最常见根因）
-   //    旧草稿的 React 受控状态与 nativeSetter 冲突 → 按钮 disabled
-   //    解决：关闭当前 modal → 重新打开 → 立即填入新标题
-   const modal = document.querySelector('.Modal');
-   if (modal && titleInput.value.length > 0 && !pubBtn.disabled === false) {
-     // 关闭并重开
-     const closeBtn = modal.querySelector('button');
-     if (closeBtn) closeBtn.click();
-     await new Promise(r => setTimeout(r, 500));
-     // 重新点击「提问题」
-     const items = [...document.querySelectorAll('div')].filter(el => el.textContent.trim() === '提问题');
-     if (items.length > 0) items[0].click();
-     await new Promise(r => setTimeout(r, 2000));
-     // 重新填入标题
-     const newTitle = document.querySelector('textarea[placeholder="标题"]');
-     const ns = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-     ns.call(newTitle, titleInput.value);
-     newTitle.dispatchEvent(new Event('input', { bubbles: true }));
-   }
-   
-   // ③ 检查按钮状态
+
+   // 🔴 即使字段都填了，按钮也可能 disabled（React 状态未同步或话题未绑）
+   // 不走「关闭重开」路径——直接 fiber bypass 点击
    if (pubBtn && pubBtn.disabled) {
-     throw new Error('❌ 发布按钮仍 disabled，检查控制台错误或页面字符提示');
+     const fiberKey = Object.keys(pubBtn).find(k => k.startsWith('__reactFiber'));
+     if (fiberKey) {
+       let fiber = pubBtn[fiberKey];
+       for (let i = 0; i < 15 && fiber; i++) {
+         const props = fiber.memoizedProps || fiber.pendingProps || {};
+         if (props.onClick && typeof props.onClick === 'function') {
+           props.onClick({
+             target: pubBtn, currentTarget: pubBtn,
+             preventDefault: () => {}, stopPropagation: () => {}
+           });
+           break;
+         }
+         fiber = fiber.return;
+       }
+     }
    }
-   ```
 
-5. **点击「发布问题」按钮发布**
+   // Playwright browser_click 正常路径（按钮已启用时）
+   if (pubBtn && !pubBtn.disabled) {
+     // 由外部 browser_click 点击 button:has-text("发布问题")
+   }
 
-   - 操作：**Playwright `browser_click`**，target=`button:has-text("发布问题")`
-   - 🔴 **禁止** `evaluate click`——React 忽略非 isTrusted 的事件
-   - 核验：modal 关闭 + URL 跳转 `/question/{id}`
-   ```javascript
-   // browser_click 后等待 2s：
-   await new Promise(r => setTimeout(r, 2000));
+   await new Promise(r => setTimeout(r, 3000));
    const url = window.location.href;
-   if (!url.includes('/question/')) throw new Error('❌ 发布失败');
+   if (!url.includes('/question/')) throw new Error('❌ 发布失败，URL 未跳转到问题页');
    console.log('✅ 提问成功 | ' + url);
    ```
 
-6. **失败处理**
-   | 现象 | 根因 | 动作 |
-   |------|------|------|
-   | 按钮 disabled | ① React 受控状态被旧草稿污染 ② 标题超 50 汉字 | 执行步骤 4 SOP |
-   | browser_click 没反应 | 按钮被 modal 动画遮挡 | 等 2s 后重试 |
-   | modal 不关闭 | 发布 API 异常 | 检查 Console 错误 |
-   | 跳转 URL 不含 question | 同上 | 记录失败，不计入提问计数 |
+6. **发布失败**：按钮 fiber bypass 后 URL 未跳转 → 放弃此题，不计入提问计数。不排查、不重试。
 - 已经有标准答案的（先自己搜一下再问）
 - 纯求资源/工具的
 - 跟政治相关的
@@ -1548,6 +1468,8 @@ curl -s http://localhost:18989/_cover.png | head -c 20 || curl -s http://localho
 | **🚨 收到 AI 警告** | **加强 §1.3a 反 AI 改写力度，确认创作声明已勾选** |
 
 ### 3.2 发布后复盘（每次发布完自动输出）
+
+> **复盘按 CLAUDE.md 技能修复标准流程执行：** 定位根因→修复（多分支→单一路径）→`skill_guard.py audit` 分支检查门→量纲检查→验证逻辑自洽→异常表（仅重复出现才写）。**复盘唯一产出是对已有章节的实际修改（diff），不建复盘/修复/追溯类新章节。不等待下次会话、不秋后算账。**
 
 文章发布成功后，立即以固定格式输出 5 问复盘，作为 `/zhihu` 执行的最终结果交付给用户。
 

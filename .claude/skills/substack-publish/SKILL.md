@@ -740,6 +740,17 @@ A：Substack 主推荐在 Explore 页 + 同类作者互推。Phase 1 别想算�
 
 ---
 
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
+
 **版本历史：**
 - v2.1 (2026-07-21)：§5.1 Step 1——Create 按钮从 evaluate 切换为 `browser_run_code_unsafe` 单一路径，移除不稳定的 evaluate click 路径；§5.1 Step 3——HTML 注入从"方案 A（evaluate 传参）+ 备选 sections 数组"合并为单一 `_gen_inject.py` + `browser_run_code_unsafe filename` 路径，解决之前双引号 JS 解析失败→内容截断的 bug（5.7K/13K）；增加 N < 8000 熔断验证；移除 50+ 行死代码/分支/备选方案；新增 `_gen_inject.py` 独立脚本固化到 claudework 目录：§5.1 Step 3 + §8——CJK 阻断升级为双重验证（Grep + Python，Python 为裁判）；§5.1 Step 1——Create 按钮定位将 evaluate 方案升为首选（Playwright API locator 不可用），移除失效的 getByRole 备选；§5.1 Step 7——Notes 引流从"人工安排"改为 CronCreate 自动定时提醒；复盘2026-07-20执行（发布 Richard Wang）三个堵塞点已修入 SOP
 - v1.8 (2026-07-16)：§5.1 Step 1——Create 按钮定位去除 [aria-label="Create"]（匹配 nav+profile 两个按钮导致 strict mode violation），改用 nav scope 限定；§5.1 Step 4——Description 字段写入被 Loading overlay 遮挡不生效的已知陷阱，增加"先关侧边栏→在发布对话框 Edit 中设置"的推荐顺序
@@ -753,3 +764,17 @@ A：Substack 主推荐在 Explore 页 + 同类作者互推。Phase 1 别想算�
 - v1.0 (2026-07-03)：首版，基于浏览器调研 + 同系技能反模式沉淀
 
 > **复盘按 CLAUDE.md 技能修复标准流程执行**
+
+### 复盘（每次执行后必须跑，无例外）
+
+```bash
+# 第1步：检查坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
+```

@@ -1,6 +1,6 @@
 ---
 name: csdn-publish
-description: CSDN「deepseek23」文章发布技能。主管道：选题前准备→生图(后台)→写正文→编辑注入→CDN图→封面标签→摘要→发布。v3.31 — 减法重构
+description: CSDN「deepseek23」文章发布技能。主管道：选题前准备→生图(后台)→写正文→编辑注入→CDN图→封面标签→发布。v3.32 — 真实发布最小修复
 ---
 
 ## §0 主管道（顺序不可颠倒）
@@ -11,9 +11,9 @@ description: CSDN「deepseek23」文章发布技能。主管道：选题前准�
 |------|------|---------|---------|
 | **I 选题** | ①清工作区→②额度检查→③扫已有文章→④热点头条→⑤选话题去重→⑥预算配置 | ≤3min | 额度用完/无合适选题/标题重复 |
 | **II 生图** | ⑦写分析文件→⑧后台启动 _csdn_gen_img.py（不阻塞） | ~0s（并行） | 双图缺失且重试仍失败→A2熔断 |
-| **III 写作** | ⑨写正文 HTML（与生图并行）→⑩插入 `__BODY_IMG_PLACEHOLDER__` | 50-120s | 正文纯文本<5000→追加到字符数最低的章节，不重写全篇 |
-| **IV 注入** | ⑪navigate编辑器→⑫填标题→⑬setData正文→⑭CDN上传→⑮proxy清理→⑯封面设置→⑰标签→⑱摘要 | ≤5min | §5 坐标表任一验收不通过 |
-| **V 发布** | ⑲§3 红线自查→⑳dispatchEvent 发布博客 | ≤30s | §3 任一不通过 |
+| **III 写作** | ⑨一次写足 6000+ 字符 HTML（与生图并行）→⑩插入 `__BODY_IMG_PLACEHOLDER__` | 50-120s | 正文纯文本<5000→本轮正文不合格，重新从开头写足 |
+| **IV 注入** | ⑪navigate编辑器→⑫填标题→⑬setData正文→⑭CDN上传→⑮proxy清理→⑯封面设置→⑰标签 | ≤5min | §5 坐标表任一验收不通过 |
+| **V 发布** | ⑲§3 红线自查→⑳`browser_click` 单击一次发布博客 | ≤30s | §3 任一不通过 |
 
 **发布后固定动作**：记录 PUBLISH_LOG.md → 清理临时文件 → 更新字数比率。
 
@@ -102,46 +102,26 @@ python _csdn_prep.py budget
 - 先写完整正文 HTML，不含任何 `<img>` 标签
 - `__BODY_IMG_PLACEHOLDER__` 标记由 `run_csdn_article_image_pipeline()` 自动插入
 - 该标记必须落在文章纯文字长度的 **35%-60% 区间**
-- 成文后执行：`python -c "import re;html=open('article_csdn.html',encoding='utf-8').read();pos=html.index('__BODY_IMG_PLACEHOLDER__');r=pos/len(html);assert 0.35<=r<=0.6,f'{r*100:.0f}%'"`
+- 成文后执行：`python -c "import re;html=open('article.html',encoding='utf-8').read();pos=html.index('__BODY_IMG_PLACEHOLDER__');r=pos/len(html);assert 0.35<=r<=0.6,f'{r*100:.0f}%'"`
 
 ---
 
 ## §1 图像生成（阶段 II）
 
-### 正文图生成（固定模块，不拆步骤）
+### 双图生成（固定模块，不拆步骤）
 ```bash
-python -c "import csdn_article_ops; r=csdn_article_ops.run_csdn_article_image_pipeline(open('article_csdn.html').read()); print(f'status={r[\"status\"]}, hash={r[\"prompt_hash\"]}'); assert r['status']=='PASS'"
+python _csdn_gen_img.py --analysis _csdn_prompt_analysis.json
 ```
-模块 `csdn_article_ops.py` 自动完成：提取主题 → 构建 prompt → Agens 生图 → 验证。全程无人值守，不再生成 `_csdn_prompt_analysis.json`。
 
 ### 双图验证锁
 ```bash
-ls -la _csdn_body_image.jpg
+Get-Item _csdn_cover.jpg,_csdn_body.jpg
 ```
-缺图 → 重跑；再次失败 → A2 熔断（本轮不发）。
+任一缺图 → 重跑同一命令；再次失败 → A2 熔断（本轮不发）。
 
-### 图片压缩 + HTTP 服务
+### 图片压缩
 ```bash
 python _csdn_prep.py compress
-python -c "
-import http.server, socketserver
-class CORSHandler(http.server.SimpleHTTPRequestHandler):
-    def end_headers(self): self.send_header('Access-Control-Allow-Origin','*'); super().end_headers()
-socketserver.TCPServer(('127.0.0.1', 18991), CORSHandler).serve_forever()
-" &
-sleep 1 && curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18991/_csdn_body_image.jpg
-```
-
-### 封面图（使用附录轮盘手动选一次，固定调用）
-```bash
-python -c "
-import json
-from csdn_article_ops import generate_article_image
-html = open('article_csdn.html').read()
-# 封面图从轮盘选不同参数，此处调用 generate_article_image 走不同 prompt
-result = generate_article_image(html, '_csdn_cover_image.jpg')
-print(result['status'])
-"
 ```
 
 ---
@@ -151,16 +131,14 @@ print(result['status'])
 1. 确认选题（§0a 步骤 ⑤）和字数预算（§0a 步骤 ⑥）
 2. 按 §0b 规范写 HTML 正文，逐段校验字数：
    - 破题段 400-600 字 → 主体每节 600-1200 字 → 结尾 300-500 字
-   - 写完每节立即 `python -c "import re;t=re.sub(r'<[^>]+>','',open('article_csdn.html',encoding='utf-8').read());t=re.sub(r'\s+','',t);print(len(t))"`，不足则本节内补
+   - 写完每节立即 `python -c "import re;t=re.sub(r'<[^>]+>','',open('article.html',encoding='utf-8').read());t=re.sub(r'\s+','',t);print(len(t))"`，不足则本节内补
 3. 插入 `__BODY_IMG_PLACEHOLDER__` 并执行 35%-60% 位置检测
 4. **排版门**（字数达标后执行）：
    ```bash
    python -c "
-   from csdn_layout import normalize_csdn_html, layout_gate
-   html = open('article_csdn.html', encoding='utf-8').read()
-   norm = normalize_csdn_html(html)
-   open('article_csdn.html', 'w', encoding='utf-8').write(norm)
-   r = layout_gate(norm)
+   from csdn_layout import layout_gate
+   html = open('article.html', encoding='utf-8').read()
+   r = layout_gate(html)
    print(f'段落数={r[\"para_count\"]}, max段长={r[\"max_han\"]}, 中位数={r[\"median_han\"]}, 超140={len(r[\"over_140\"])}, 手机超行={len(r[\"mobile_overflow\"])}, 总评={r[\"overall\"]}')
    assert r['overall']=='PASS', f'排版门未通过: {[k for k,v in r.items() if \"check_\" in k and v==\"FAIL\"]}'
    "
@@ -181,20 +159,9 @@ print(result['status'])
 
 ## §2 编辑器操作（阶段 IV）
 
-navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEditor 检测在正文注入前执行）。然后按 [§5 坐标表](#5-坐标表playwright-mcp-精确指令) 逐条执行（#0→#1→#2→#2b→#2c→#2d→#3→#4→摘要生成→#10b→#11），无分支。
+navigate → `https://mp.csdn.net/mp_blog/creation/editor`（不等就绪，CKEditor 检测在正文注入前执行）。然后按 [§5 坐标表](#5-坐标表playwright-mcp-精确指令) 逐条执行（#0→#1→#2→#2b→#2c→#2d→#3→#4→#10b→#11），无分支。
 
-**摘要生成步骤（在 #4 标签后执行）：**
-```bash
-python -c "
-from csdn_article_ops import build_article_summary
-s = build_article_summary(open('article_csdn.html', encoding='utf-8').read())
-open('_csdn_summary.txt', 'w', encoding='utf-8').write(s)
-print(f'摘要 {len(s)} 字')
-"
-```
-然后将 `_csdn_summary.txt` 写入编辑器摘要 textarea（使用 `browser_evaluate` 设值），验证 ≥ 200。
-
-编号映射（§5 → §0 主管道）：#0=预检 / #1=⑫填标题 / #2=⑬setData / #2b=⑭CDN上传 / #2c=⑮proxy清理 / #2d=验收 / #3=⑯封面 / #4=⑰标签 / 摘要生成=⑱摘要 / #11=⑳发布。
+编号映射（§5 → §0 主管道）：#0=预检 / #1=⑫填标题 / #2=⑬setData / #2b=⑭CDN上传 / #2c=⑮proxy清理 / #2d=验收 / #3=⑯封面 / #4=⑰标签 / #11=⑳发布。
 
 ---
 
@@ -206,7 +173,6 @@ print(f'摘要 {len(s)} 字')
 - [ ] `<img` 在 35%-60% 位置（纯文字计，非前 30% 非后 30%）
 - [ ] 封面/正文的 style/palette/composition/mood 4 维度全部不同
 - [ ] 本次组合与上篇至少 2 维度不同
-- [ ] 摘要长度 ≥ 200
 - [ ] 正文纯文本 ≥ 5000 字符
 - [ ] 无段落超 180 字（超的数量 ≤ 3）
 
@@ -222,8 +188,8 @@ print(f'摘要 {len(s)} 字')
 | 4 | 标签面板不可见 | nativeInputValueSetter 直接赋值隐藏 input，不走面板交互 | 7.21 |
 | 5 | 原图 >1MB 上传超慢 | PIL resize + q=60 压缩到 <100KB 再上传 | 7.08 |
 | 6 | 编辑器 SPA 崩溃（操作超 30 次）| 操作计数上限 30 次；页面死亡则放弃 | 7.17 |
-| 7 | 发布按钮 Vue 不响应 | `removeAttribute('aria-disabled')` + `dispatchEvent(MouseEvent('click'))`，不用 browser_click | 7.24 |
-| 8 | 摘要自动生成 | `build_article_summary()` 替代 AI提取摘要按钮，200-300 字，重算 3 次后确定性压缩 | 7.25 |
+| 7 | 发布动作 | 发布前确认 `aria-disabled="false"`，然后 `browser_click` 单击一次“发布博客” | 7.28 |
+| 9 | HTTPS 混合内容拦截 fetch | CSDN 编辑器为 HTTPS 页面，`fetch('http://localhost:...')` 被浏览器混合内容策略拦截。必须用 addScriptTag + base64 编码注入 CKEditor 正文，不能走 HTTP 服务器 + fetch | 7.28 |
 
 ### 已合并/过期（被稳定方案替代不再单独记录）
 - ~CDN 上传被安全策略拦截~ → #8 浏览器文件选择器方案替代
@@ -239,29 +205,35 @@ print(f'摘要 {len(s)} 字')
 |---|------|-------------|---------|
 | 0 | 预检（额度+CKEditor就绪） | `async () => { if(document.body.textContent.includes('已达发文上限')) throw new Error('已达发文上限'); for(let i=0;i<40;i++){ if(typeof CKEDITOR!=='undefined' && CKEDITOR.instances && CKEDITOR.instances.editor) return true; await new Promise(r => setTimeout(r, 500)); } throw new Error('CKEditor 加载超时'); }` | CKEDITOR.instances.editor 存在 |
 | 1 | 填标题 #txtTitle | `() => { const t=document.querySelector('#txtTitle'); t.value='标题'; t.dispatchEvent(new Event('input',{bubbles:true})); }` | value === 标题 |
-| 2 | setData 正文（从 HTTP 服务 fetch） | `async () => { const r=await fetch('http://localhost:18991/article_csdn.html'); const h=await r.text(); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); return CKEDITOR.instances.editor.getData().length; }` | getData().length > 0 |
+| 2 | setData 正文（base64 → TextDecoder → CKEditor） | ```bash
+python -c "import base64;html=open('article.html',encoding='utf-8').read();b64=base64.b64encode(html.encode('utf-8')).decode();open('_csdn_b64.js','w',encoding='utf-8').write(f'window._csdn_b64=\"{b64}\"')"
+```
+→ browser_run_code_unsafe: `page.addScriptTag({path:'_csdn_b64.js'})` → evaluate:
+```javascript
+const raw=atob(window._csdn_b64);const b=new Uint8Array(raw.length);
+for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);
+CKEDITOR.instances.editor.setData(new TextDecoder('utf-8').decode(b));
+CKEDITOR.instances.editor.fire('change');
+```
+**注意**：禁止用 `atob()` 直接解码（会损毁中文字符）。必须用 `TextDecoder('utf-8')`。| getData().length > 0 |
+| **2a** | **验收中文渲染**（不可跳过） | `() => { const d=CKEDITOR.instances.editor.getData(); return {hasCN:d.includes('中国'), hasTable:d.includes('<table>'), hasCode:d.includes('<pre>'), len:d.length}; }` | hasCN=true 且 len > 0 |
+
+**注意**：因 CSDN 编辑器为 HTTPS 页面，浏览器安全策略会拦截 `fetch('http://localhost:...')`（混合内容），故不得使用 HTTP 服务器 + fetch 方案注入正文，必须用 addScriptTag + base64 方案。|
 | 2b | CDN 上传（→§2b 详细步骤） | 见下方 §2b 多步序列 | `<img` 计数 === 1 |
 | 2c | 清除 proxy 图 | `() => { let h=CKEDITOR.instances.editor.getData(); h=h.replace(/<img[^>]*src="https:\/\/img-home\.csdnimg\.cn\/images\/[^"]+\?origin_url=[^">]*"[^>]*\/?>/gi,''); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); }` | getData() 无 img-home URL |
 | 2d | 验证图片状态 | `() => { const h=CKEDITOR.instances.editor.getData(); return { proxy:/img-home\.csdnimg\.cn/.test(h), cdn: (h.match(/i-blog\.csdnimg\.cn\/direct\/[^"']+/)?.[0]||'') }; }` | proxy=false 且 cdn 非空 |
 | 3 | 设置封面 | `() => { const i=document.querySelector('.img-selection-item img[src*=\"csdnimg.cn/direct\"]'); if(!i) return 'no_img'; i.closest('.img-selection-item')?.click(); return 'clicked'; }` → wait 3s → `() => { const c=document.querySelector('.vicp-operate-btn'); if(c){c.click();return 'crop';} return 'no_crop'; }` → 若 crop 仍在：`() => { const d=document.querySelector('.vicp-close'); if(d)d.click(); }` | `.container-coverimage-box .preview` 的 src 以 http 开头且 >50 字符 |
 | 4 | 设标签 | `() => { const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set; s.call(document.querySelector('input[name=\"tags\"]'),'标签1,标签2'); document.querySelector('input[name=\"tags\"]').dispatchEvent(new Event('input',{bubbles:true})); }` | `input[name="tags"]` 不为空 |
-| 10 | 生成摘要（固定模块） | `() => { const ta=document.querySelector('textarea[placeholder*="摘要"]'); if(!ta) return 'no_textarea'; return 'ok'; }` | - |
 | 10b | 验证标题未被覆盖 | `() => { const t=document.querySelector('#txtTitle'); return t?.value?.length > 0 && t.value.length <= 100; }` | title 长度在 5-100 范围 |
-| 11 | **发布博客** | `() => { const b=Array.from(document.querySelectorAll('button')).find(x=>x.textContent.trim()==='发布博客'); if(!b) return 'not_found'; b.removeAttribute('aria-disabled'); b.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})); return 'ok'; }` | URL 含 /creation/success/ |
+| 11 | **发布博客** | `browser_click`：`target: "button:has-text(\"发布博客\")"`，只单击一次 | URL 含 /creation/success/ |
 
 ### §2b — CDN 上传详细步骤（2026-07-24 验证）
 
 | 序号 | 操作 | 工具 | 命令 |
 |------|------|------|------|
 | ① | execImageUpload 打开弹窗 | browser_evaluate | `function: "() => { CKEDITOR.instances.editor.execCommand('execImageUpload'); }"` |
-| ② | 点"选择图片"打开文件选择器 | browser_click | `target: "text=选择图片"` |
-| ③ | 选择压缩图（弹窗变为 file chooser） | browser_file_upload | `paths: ["_csdn_body_small.jpg"]` |
-| ④ | 等裁剪界面出现 | browser_wait_for | `time: 3` |
-| ⑤ | 确认裁剪上传 | browser_evaluate | `function: "() => { const b=document.querySelector('.vicp-operate-btn'); if(b) b.click(); }"` |
-| ⑥ | 等 CDN 上传完成 | browser_wait_for | `time: 10` |
-| ⑦ | 获取 CDN URL + 关窗 | browser_evaluate | `function: "() => { document.querySelectorAll('.cke_dialog,.el-overlay,.vicp-close').forEach(el=>el.remove()); const h=CKEDITOR.instances.editor.getData(); const m=h.match(/i-blog\\.csdnimg\\.cn\\/direct\\/[^\"']+/); return m ? 'https://'+m[0] : null; }"` |
-| ⑧ | 重新注入完整正文 + 替换占位符 | browser_evaluate | `function: async () => { const resp=await fetch('http://localhost:18991/article_csdn.html'); const full=await resp.text(); const cdn='CDN_URL'; let h=full.replace(/<img[^>]*src="[^"]*"[^>]*\/?>/gi,''); h=h.replace('__BODY_IMG_PLACEHOLDER__','<img src=\"'+cdn+'\" style=\"width:100%;max-width:800px;border:1px solid #e0e0e0;border-radius:8px;\" />'); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); return (CKEDITOR.instances.editor.getData().match(/<img/gi)||[]).length===1; }"` |
-| ⑨ | 验证图片 | browser_evaluate | `function: "() => { const h=CKEDITOR.instances.editor.getData(); return { imgCount:(h.match(/<img/gi)||[]).length, cdn:(h.match(/i-blog\.csdnimg\.cn\/direct\/[^"']+/)?.[0]||'none') } }"` |
+| ② | 向正文图唯一 input 注入压缩图并等待 CDN URL | browser_run_code_unsafe | `code: "async (page) => { const input=page.locator('#pane-upimg input[type=\\\"file\\\"]'); if(await input.count()!==1) throw new Error('正文图 file input 非唯一'); await input.setInputFiles('C:\\\\Users\\\\59314\\\\claudework\\\\_csdn_body_small.jpg'); for(let i=0;i<30;i++){ const s=await page.evaluate(()=>{const h=CKEDITOR.instances.editor.getData();return h.match(/https:\\\/\\\/i-blog\\.csdnimg\\.cn\\/direct\\/[^\\\"']+/)?.[0]||null;}); if(s)return s; await page.waitForTimeout(1000); } throw new Error('30秒内未读到正文CDN图'); }"` |
+| ③ | 用 CDN URL 替换占位符并验收 | browser_evaluate | `function: "() => { let h=CKEDITOR.instances.editor.getData(); const cdn=h.match(/https:\\/\\/i-blog\\.csdnimg\\.cn\\/direct\\/[^\"']+/)?.[0]; if(!cdn) throw new Error('未找到CDN URL'); h=h.replace(/<img[^>]*>/gi,'').replace('__BODY_IMG_PLACEHOLDER__','<img src=\"'+cdn+'\" style=\"width:100%;max-width:800px;border:1px solid #e0e0e0;border-radius:8px;\" />'); CKEDITOR.instances.editor.setData(h); CKEDITOR.instances.editor.fire('change'); return (CKEDITOR.instances.editor.getData().match(/<img/gi)||[]).length===1; }"` |
 
 ### §2c — 封面设置详细步骤
 
@@ -282,7 +254,7 @@ print(f'摘要 {len(s)} 字')
 
 ### 6.2 更新字数比率（必须先于清理执行）
 ```python
-python -c "import re,os;html=open('article_csdn.html',encoding='utf-8').read();text=re.sub(r'<[^>]+>','',html);text=re.sub(r'\s+','',text);actual=len(text);budget=7000;new=actual/budget;f='_csdn_budget_ratio.txt';p=float(open(f).read().strip())if os.path.isfile(f)else new;s=p*0.7+new*0.3;open(f,'w').write(f'{s:.4f}');print(f'ratio:{new:.4f} factor:{1/max(s,0.1):.2f}')"
+python -c "import re,os;html=open('article.html',encoding='utf-8').read();text=re.sub(r'<[^>]+>','',html);text=re.sub(r'\s+','',text);actual=len(text);budget=7000;new=actual/budget;f='_csdn_budget_ratio.txt';p=float(open(f).read().strip())if os.path.isfile(f)else new;s=p*0.7+new*0.3;open(f,'w').write(f'{s:.4f}');print(f'ratio:{new:.4f} factor:{1/max(s,0.1):.2f}')"
 ```
 
 ### 6.3 清理
@@ -291,8 +263,30 @@ python _csdn_prep.py clean
 ```
 保留 `_csdn_last_style.txt` / `_csdn_gen_img.py` / `_csdn_prep.py` / `_csdn_budget_ratio.txt`。
 
-### 6.4 复盘
-按 CLAUDE.md 技能修复标准流程执行。复盘唯一产出是 diff，不产复盘章节。
+### 6.4 复盘（每次执行后必须跑，无例外）
+
+按 CLAUDE.md 技能修复标准流程执行
+
+```bash
+# 第1步：鉴别失败命令——检查§5坐标表中每个命令在当前环境是否可执行
+# 检查原则：命令在 SKILL.md 中以什么形态存在是历史，在本次环境中能否工作才是真实状态
+# 如果有命令被临场绕过（如 HTTP fetch 不通改用 addScriptTag），说明该命令已损坏，必须替换
+
+# 第2步：扫描残留文件（本次执行产生的临时文件不得留存）
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js article.html 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+
+# 第3步：检查§2a中文验收是否包含在坐标表中
+grep -q "2a" SKILL.md && echo "✅ 中文验收存在" || echo "⚠️ 缺少中文验收步骤"
+
+# 第4步：确认所有 base64 解码都使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+
+# 第5步：确认无 HTTP server fetch 残留（已被混合内容策略永久封禁）
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+
+# 第6步：如果以上任何检查失败 → 替换对应行，不追加
+# 复盘唯一产出是 diff，不产任何复盘章节/文件/日志
+```
 
 ---
 

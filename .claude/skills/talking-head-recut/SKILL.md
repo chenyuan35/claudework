@@ -1189,3 +1189,21 @@ Tell the user:
 ```
 
 Do not delete the work directory unless the user asks.
+
+# 第1步：检查坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+```
+
+---
+
+## 技能执行复盘（仅在触发时执行，整条 SOP 的最后一步）
+
+本节不是例行仪式。产物验收一次通过、实际执行与 SOP 一致、无人工绕过或用户纠正、无可避免等待且未超过 20 分钟时，直接交付，不复盘、不输出“无修改”、不改文件。
+
+只有出现技术报错或验证失败、流程偏移或模糊分支、质量返工、重复调用或可避免超时、用户指出目标偏移时，才执行一次全面闭环：读取日志和产物证据，检查技术、质量、效率、流程偏移和下次复用性，定位唯一根因；直接替换现有 SKILL.md 或脚本中的失效步骤，删除冲突旧写法；完成真实渲染或产物复验后继续交付。不得生成复盘文件或报告。

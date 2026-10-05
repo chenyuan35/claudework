@@ -201,6 +201,8 @@ Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless
 
 **Gate:** `lint`, `validate`, and `inspect` passed before render; user approved at the review pause (autonomous: checks passed and the delivery includes the contact sheet); `renders/video.mp4` exists. Final reply states MP4 path and final duration.
 
+
+🔴 完成后：必须执行下方「复盘」流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）。
 ---
 
 ## Quick Reference
@@ -234,7 +236,34 @@ The reusable, domain-agnostic shot shapes live in `../hyperframes-animation/blue
 
 ---
 
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
+
 ## 收尾核验（强制末步）
 
 - 回看核心规则①（`~/.claude/CLAUDE.md` 永久原则第一条）：平台技术细节（DOM/API/坐标/SOP/已知问题）只进本技能文件，不进内置记忆；本次修正与复盘已直接编入本 SKILL.md，未写多余记忆文件。
 - 反馈即修技能——若本次暴露新堵塞点/选择器/绕过方案，当场写入对应章节（留版本号），不依赖记忆回看。
+
+### 复盘（每次执行后必须跑，无例外）
+
+按 CLAUDE.md 技能修复标准流程执行
+
+```bash
+# 第1步：检查坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
+```

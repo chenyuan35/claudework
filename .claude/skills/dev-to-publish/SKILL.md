@@ -348,34 +348,22 @@ console.log('首页第一篇标题:', firstArticle);
 
 ---
 
-## §4 发布后复盘（每次执行必须做）
+## §4 复盘（每次执行后必须跑，无例外）
 
-> **复盘按 CLAUDE.md 技能修复标准流程执行**
+按 CLAUDE.md 技能修复标准流程执行
 
-每次发布完成后自动执行，修改 SKILL.md：
-
-1. **记录发布信息**：标题、URL、词数、标签
-2. **复盘堵塞点**：哪个步骤卡住了？原因？如何修复？直接改 SKILL.md
-3. **清空临时文件**：
-   ```bash
-   rm -f devto_article.json devto_article_publish.json devto_body.md devto_body.b64
-   ```
-
-### 复盘记录格式
+```bash
+# 第1步：检查§5（或对应步号）坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
 ```
-## {日期}：Dev.to v{版本号} — {标题}
-
-- URL：{url}
-- 词数：{N}
-- 标签：{tags}
-- 发布时间：{datetime}
-- 状态：{成功/失败}
-- 堵塞点：{如果有则记录}
-- 修复：{如果堵塞则记录修复方式}
-- 复盘行动：{本次复盘后对技能的修改摘要}
 ```
-
----
 
 ## 发布记录
 

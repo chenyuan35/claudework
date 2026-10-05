@@ -452,6 +452,8 @@ overlays.forEach(function(el) { if(el.style) el.style.display = 'none'; });
 编辑 → 段落tab → .menu-add → 图片 → 上传(等100%) → 保存
 ```
 
+
+🔴 完成后：必须执行下方「复盘」流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）。
 ---
 
 ## §4 质量门（发布前逐条过）
@@ -500,8 +502,33 @@ overlays.forEach(function(el) { if(el.style) el.style.display = 'none'; });
 | 13 | **封面dialog/会员弹窗/activate-member-dailog 遮挡保存按钮** | 先 evaluate 移除 `.el-dialog__wrapper` 和 `.v-modal`，再点击保存。或在 editor 中直接用 `dispatchEvent` |
 | 14 | **menu-add 图片上传未完成即保存 → 新建空文章** | 上传后必须轮询 `[class*="progress"]` 直到不含 "%"，再点保存。上传约 40-60 秒 |
 | 15 | menu-add 图片选项被 captcha overlay 遮挡为 `abs-disable` | evaluate 移除 captcha iframe 后再点击，或用 JS 直接 `item.click()` 绕过可见性检查 |
+
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
 ---
-> **复盘按 CLAUDE.md 技能修复标准流程执行**
+
+
+按 CLAUDE.md 技能修复标准流程执行
+# 第1步：检查§5（或对应步号）坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
+```
+```
+
+---
 
 ## §6 版本历史
 

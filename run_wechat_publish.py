@@ -19,7 +19,7 @@ run_wechat_publish.py -- 公众号发布状态机 v1.0
 状态: session_state.json
 """
 
-import json, os, re, shutil, subprocess, sys, time, traceback
+import hashlib, json, os, re, shutil, subprocess, sys, time, traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -40,7 +40,7 @@ BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 # category: auto=bash script runs it, browser=claude via playwright, terminal=end state
 STATES_DEF = [
     ('init',        'auto',     '初始化: 检查目录/依赖',             1, True),
-    ('topic',       'auto',     '选题: 确定文章主题和标题',           2, True),
+    ('topic',       'browser',  '选题: 确定文章主题和标题',           2, True),
     ('write',       'auto',     '写作: 生成文章并保存 .txt',          2, True),
     ('qa_para',     'auto',     '段长闸: check_wechat_para.py',       2, False),
     ('qa_ai',       'auto',     'AI味闸: ai_score.py',               2, False),
@@ -98,7 +98,7 @@ def run(cmd, timeout=120):
 # --- state persistence ---
 
 DEFAULT_STATE = {
-    'version': '1',
+    'version': '2',
     'current_state': 'init',
     'retry_count': 0,
     'last_recovery': '',
@@ -106,6 +106,15 @@ DEFAULT_STATE = {
     'topic': '',
     'title': '',
     'article_file': '',
+    'image_article_sha256': '',
+    'image_manifest': '',
+    'content_pillar': '',
+    'marketing_job': '',
+    'topic_score': 0,
+    'topic_evidence': '',
+    'actionable_asset': '',
+    'pillar_counts_last10': {},
+    'age_title_count_last10': 0,
     'cdn_urls': [],
     'draft_url': '',
     'appmsgid': '',
@@ -226,28 +235,52 @@ def step_auto_init(state):
     return True
 
 
-def step_auto_topic(state):
-    """Select topic and write article skeleton."""
-    # Claude writes the article; this step signals Claude to do it
-    # For auto mode, just validate the topic exists
-    log('topic step: awaiting Claude to write article')
-    return True
-
-
 def step_auto_write(state):
-    """Check article file exists and meets basic requirements."""
-    articles = sorted(WORKDIR.glob('wechat_article_*.txt'))
-    if not articles:
-        log('no article file found', 'ERROR')
+    """Enforce brand strategy and validate the exact article selected in topic state."""
+    valid_pillars = {'谋生工具箱', '人性账本', '现实选择题'}
+    valid_jobs = {'搜索拉新', '信任建立', '收藏沉淀'}
+    pillar = state.get('content_pillar', '')
+    job = state.get('marketing_job', '')
+    if pillar not in valid_pillars or job not in valid_jobs:
+        log(f'strategy metadata FAIL: pillar={pillar!r} job={job!r}', 'ERROR')
         return False
-    af = articles[-1]
+    try:
+        topic_score = int(state.get('topic_score', 0))
+    except (TypeError, ValueError):
+        topic_score = 0
+    if topic_score < 75:
+        log(f'topic score FAIL: {topic_score} < 75', 'ERROR')
+        return False
+    if not state.get('topic_evidence') or not state.get('actionable_asset'):
+        log('topic evidence/actionable asset missing', 'ERROR')
+        return False
+
+    title = state.get('title', '').strip()
+    age_count = int(state.get('age_title_count_last10', 0) or 0)
+    has_age_label = bool(re.search(r'人到中年|中年人|中年|四十岁|五十岁|40岁|50岁', title))
+    if has_age_label and age_count >= 2:
+        log(f'age-label cap FAIL: last10 already has {age_count}', 'ERROR')
+        return False
+
+    article_path = state.get('article_file', '')
+    af = Path(article_path) if article_path else None
+    if not af or not af.exists():
+        articles = list(WORKDIR.glob('wechat_article_*.txt'))
+        if not articles:
+            log('no article file found', 'ERROR')
+            return False
+        af = max(articles, key=lambda p: p.stat().st_mtime)
     text = af.read_text('utf-8')
-    cn = len(re.findall(r'[一-鿿]', text))
-    if cn < 2000:
-        log(f'article too short: {cn} chars', 'ERROR')
+    article_title = text.splitlines()[0].strip().lstrip('#').strip()
+    if not title or article_title != title:
+        log(f'title mismatch: state={title!r} article={article_title!r}', 'ERROR')
+        return False
+    cn = len(re.findall(r'[一-鿿豈-﫿]', text))
+    if not 2400 <= cn <= 2800:
+        log(f'article length FAIL: {cn}, expect 2400-2800 hanzi', 'ERROR')
         return False
     state['article_file'] = str(af)
-    log(f'article ok: {af.name} ({cn} chars)')
+    log(f'article ok: {af.name} ({cn} hanzi, {pillar}/{job}, score={topic_score})')
     return True
 
 
@@ -280,66 +313,150 @@ def step_auto_qa_ai(state):
 
 
 def step_auto_image_gen(state):
-    """Generate cover + inline images. Skip if already exist."""
+    """Generate an article-bound four-image package and reject stale images."""
     af = state.get('article_file', '')
-    imgs = [WORKDIR / 'cover.jpg'] + [WORKDIR / f'inline{i}.jpg' for i in range(1, 4)]
-    all_exist = all(i.exists() and i.stat().st_size >= 10000 for i in imgs)
+    article_path = Path(af) if af else None
+    if not article_path or not article_path.exists():
+        log('image generation FAIL: article file missing', 'ERROR')
+        return False
 
-    if all_exist:
-        log('images already exist, skip generation')
+    imgs = [WORKDIR / 'cover.jpg'] + [WORKDIR / f'inline{i}.jpg' for i in range(1, 4)]
+    manifest_path = WORKDIR / 'image_manifest.json'
+    article_sha = hashlib.sha256(article_path.read_bytes()).hexdigest()
+
+    def valid_manifest(path, expected_dir):
+        try:
+            manifest = json.loads(path.read_text('utf-8'))
+            if manifest.get('article_sha256') != article_sha:
+                return False, 'article fingerprint mismatch', None
+            records = manifest.get('images', [])
+            by_name = {item.get('file'): item for item in records}
+            expected_names = {'cover.jpg', 'inline1.jpg', 'inline2.jpg', 'inline3.jpg'}
+            if set(by_name) != expected_names:
+                return False, 'manifest must contain exactly four images', None
+            inline_scenes = []
+            for name in expected_names:
+                image_path = expected_dir / name
+                record = by_name[name]
+                if not image_path.exists() or image_path.stat().st_size < 10000:
+                    return False, f'{name} missing or smaller than 10KB', None
+                actual_sha = hashlib.sha256(image_path.read_bytes()).hexdigest()
+                if record.get('sha256') != actual_sha:
+                    return False, f'{name} hash mismatch', None
+                if name.startswith('inline'):
+                    scene = re.sub(r'\s+', '', record.get('scene', ''))
+                    if len(scene) < 20:
+                        return False, f'{name} has no usable article scene', None
+                    inline_scenes.append(scene)
+            if len(set(inline_scenes)) != 3:
+                return False, 'inline scenes are not distinct', None
+            return True, 'ok', manifest
+        except Exception as exc:
+            return False, str(exc), None
+
+    current_ok, current_reason, current_manifest = valid_manifest(manifest_path, WORKDIR)
+    if current_ok:
+        state['image_article_sha256'] = article_sha
+        state['image_manifest'] = str(manifest_path)
+        log(f'images match current article, resume package sha256={article_sha[:12]}')
         return True
 
-    log('generating images...')
-    if af:
-        rc, out, err = run(f'python {escape_path(WORKDIR)}/auto_gen_images.py {escape_path(af)}', timeout=600)
-        if rc == 0 or rc is None:
-            pass  # might have succeeded even with odd rc
-
-    # verify
-    missing = [i.name for i in imgs if not i.exists() or i.stat().st_size < 10000]
-    if missing:
-        log(f'missing images: {missing}', 'ERROR')
+    log(f'generating fresh article-bound images ({current_reason})...')
+    stage_dir = (WORKDIR / '_wechat_image_stage').resolve()
+    if stage_dir.parent != WORKDIR.resolve():
+        log(f'image stage path escaped workspace: {stage_dir}', 'ERROR')
         return False
-    log('all images generated')
+    if stage_dir.exists():
+        shutil.rmtree(stage_dir)
+    stage_dir.mkdir(parents=True)
+
+    cmd = [
+        sys.executable,
+        str(WORKDIR / 'auto_gen_images.py'),
+        str(article_path),
+        '--out-dir',
+        str(stage_dir),
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(WORKDIR),
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        log('image generation TIMEOUT after 600s', 'ERROR')
+        return False
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or 'unknown error').strip()[-500:]
+        log(f'image generation FAIL: {detail}', 'ERROR')
+        return False
+
+    stage_manifest = stage_dir / 'image_manifest.json'
+    stage_ok, stage_reason, stage_data = valid_manifest(stage_manifest, stage_dir)
+    if not stage_ok:
+        log(f'image package gate FAIL: {stage_reason}', 'ERROR')
+        return False
+
+    for image_path in imgs:
+        os.replace(stage_dir / image_path.name, image_path)
+    os.replace(stage_manifest, manifest_path)
+    shutil.rmtree(stage_dir)
+    state['image_article_sha256'] = article_sha
+    state['image_manifest'] = str(manifest_path)
+    sections = [
+        item['section_title'] for item in stage_data['images']
+        if item['file'].startswith('inline')
+    ]
+    log(f'all images generated for article sha256={article_sha[:12]}, sections={sections}')
     return True
 
 
 def step_auto_cors(state):
-    """Start CORS HTTP server in background. Keep port in state."""
-    script = (
-        f'import http.server, socketserver, os, socket, threading; '
-        f'os.chdir(r"{escape_path(WORKDIR)}"); '
-        f'class H(http.server.SimpleHTTPRequestHandler): '
-        f'  def end_headers(self): '
-        f'    self.send_header("Access-Control-Allow-Origin", "*"); '
-        f'    super().end_headers(); '
-        f'  def log_message(self, *a): pass; '
-        f'port=8768; '
-        f'while True: '
-        f'  s=socket.socket(); '
-        f'  try: s.bind(("127.0.0.1",port)); s.close(); break; '
-        f'  except OSError: port+=1; '
-        f'print("PORT",port); '
-        f'with open(r"{escape_path(WORKDIR)}/_cors_port.txt","w") as f: f.write(str(port)); '
-        f'socketserver.TCPServer(("127.0.0.1",port), H).serve_forever()'
-    )
-    # kill existing first
-    run('pkill -f "socketserver.TCPServer" 2>/dev/null || true')
-    run(f'python -c "{script}" &', timeout=5)
-    time.sleep(2)
-    # read port
-    port_file = WORKDIR / '_cors_port.txt'
-    if port_file.exists():
-        port = int(port_file.read_text('utf-8').strip())
-        state['cors_port'] = port
-    else:
-        state['cors_port'] = 8768
-    # verify
-    rc, out, err = run(f'curl -s -o /dev/null -w "%{{http_code}}" http://127.0.0.1:{state["cors_port"]}/cover.jpg')
-    if '200' in out:
-        log(f'CORS running on {state["cors_port"]}')
-        return True
-    log('CORS start FAIL', 'ERROR')
+    """Start the bundled CORS image server in a hidden background process."""
+    import socket
+    import urllib.request
+
+    port = 8768
+    while port < 8788:
+        with socket.socket() as probe:
+            try:
+                probe.bind(('127.0.0.1', port))
+                break
+            except OSError:
+                port += 1
+    if port >= 8788:
+        log('CORS start FAIL: no free port in 8768-8787', 'ERROR')
+        return False
+
+    cmd = [sys.executable, str(WORKDIR / 'img_server.py'), str(port)]
+    popen_kwargs = {
+        'cwd': str(WORKDIR),
+        'stdin': subprocess.DEVNULL,
+        'stdout': subprocess.DEVNULL,
+        'stderr': subprocess.DEVNULL,
+    }
+    if os.name == 'nt':
+        popen_kwargs['creationflags'] = (
+            subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+    proc = subprocess.Popen(cmd, **popen_kwargs)
+    (WORKDIR / '_cors_port.txt').write_text(str(port), 'utf-8')
+    (WORKDIR / '_cors_pid.txt').write_text(str(proc.pid), 'utf-8')
+
+    url = f'http://127.0.0.1:{port}/cover.jpg'
+    for _ in range(20):
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                if response.status == 200:
+                    state['cors_port'] = port
+                    log(f'CORS running on {port}')
+                    return True
+        except Exception:
+            time.sleep(0.25)
+
+    log(f'CORS start FAIL: {url} unavailable', 'ERROR')
     return False
 
 
@@ -389,8 +506,11 @@ def step_auto_validate(state):
 
 
 def step_auto_review(state):
-    """Post-publish review. Update topic ledger."""
-    log('review step: update topic ledger')
+    """Record the strategy classification carried by the completed draft."""
+    log(
+        f'review recorded: {state.get("content_pillar", "")}/'
+        f'{state.get("marketing_job", "")} score={state.get("topic_score", 0)}'
+    )
     return True
 
 
@@ -402,6 +522,22 @@ def step_auto_skill_fix(state):
 
 def step_auto_cleanup(state):
     """Remove temp files, rotate backups."""
+    pid_file = WORKDIR / '_cors_pid.txt'
+    if pid_file.exists():
+        try:
+            server_pid = int(pid_file.read_text('utf-8').strip())
+            if os.name == 'nt':
+                subprocess.run(
+                    ['taskkill', '/PID', str(server_pid), '/T', '/F'],
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    timeout=10,
+                )
+            else:
+                os.kill(server_pid, 15)
+        except Exception as e:
+            log(f'CORS cleanup warning: {e}', 'WARN')
+        pid_file.unlink(missing_ok=True)
     patterns = ['voice_temp.*', 'test_*.mp3', 'test_*.wav', 'article_audio.*',
                 'audio_*.mp3', '_cors_port.txt', '_publish_heartbeat.txt']
     for pat in patterns:
@@ -417,7 +553,6 @@ def step_auto_cleanup(state):
 
 AUTO_HANDLERS = {
     'init': step_auto_init,
-    'topic': step_auto_topic,
     'write': step_auto_write,
     'qa_para': step_auto_qa_para,
     'qa_ai': step_auto_qa_ai,

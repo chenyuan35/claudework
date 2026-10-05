@@ -70,14 +70,15 @@ python ../tools/run_skill.py --post-check toutiao-article --task-id <id>
 ### Phase 0：数据采集
 
 1. 导航到作品管理列表，采集最近20篇标题（去重用）。
-2. 采集昨日发布文章数据：展现量/阅读量/点击率/阅读完成率/平均阅读时长/点赞/评论/收藏/分享/新增粉丝/粉丝净增/流量来源。没有对应字段写 `null`，不编造。
+2. **导航到数据页（作品数据）**，采集昨日发布文章数据：展现量/阅读量/点击率/阅读完成率/平均阅读时长/点赞/评论/收藏/分享/新增粉丝/粉丝净增/流量来源。没有对应字段写 `null`，不编造。**禁止只从作品列表扫展现/阅读——必须进数据页采集完整指标。**
 3. 计算：ctr、interaction_rate、follow_conversion、completion_score、retention_score。
-4. 方向排名按 follow_conversion → completion_score → ctr → interaction_rate → 阅读量。
+4. 方向排名按 follow_conversion → completion_score → ctr → interaction_rate → 阅读量。写入 runtime/direction_ranking.json。
 5. 写入 runtime/metrics.json。
 
 ### Phase 1：选题评分
 
-1. 生成候选选题，按以下维度100分评分：受众匹配(25) + 历史数据(25) + 实用价值(20) + 系列连续性(15) + 时效/搜索(10) + 来源可靠(5)。
+1. **生成候选选题，必须基于数据**：读取 Phase 0 的 `direction_ranking.json`，按排名顺序从高分方向生成候选。每个方向至少 2 个候选。若高分方向候选不足 5 个才补充相邻方向。**禁止凭空编造候选——所有候选的 direction 必须来自 direction_ranking 的前 3 名。**
+2. 按以下维度100分评分：受众匹配(25) + 历史数据(25) + 实用价值(20) + 系列连续性(15) + 时效/搜索(10) + 来源可靠(5)。
 2. 热点综合分达到配置阈值、提供 `hot_age_days` 或可解析的 `hot_published_at`、发布时间未过期、且 `content_pillar` / `direction` / `subdirection` 精确属于账号方向时，附加最多5分；缺少时效证据或不符合账号方向均不加分，热点不能覆盖主评分。
 3. 读取 history.json 最后一篇的 `hook_id`，候选中相同钩子全部排除；连续两篇不得使用同一钩子。
 4. 低于配置 `score_min` 的选题不写。
@@ -157,12 +158,15 @@ python ../tools/run_skill.py --post-check toutiao-article --task-id <id>
 3. 新文章先写入带 `operation_key`、`article_index_after` 的 history 提交记录，再幂等更新 state 与 metrics；三个 JSON 均使用临时文件 + `os.replace` 原子替换。
 4. metrics.json 的 articles_total 只对新落盘文章递增一次。
 5. 删除当前文章上下文和 runtime/images/ 临时图片。
-6. 第一篇成功后保留 `article_index=1`，状态转为 idle 并从 Phase 0 开始第二篇；第二篇成功后 state.json 完全重置为 idle。
-7. history.json 和 metrics.json 保留。
+6. 第一篇成功后保留 `article_index=1`，状态转为 idle 并从 Phase 0 开始第二篇。
+7. 第二篇成功后，执行技能修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表），产出唯一是对已有章节的实际修改（diff）或无修改声明。当日流程结束。
+8. history.json 和 metrics.json 保留。
 
+
+🔴 完成后：必须执行下方「复盘」流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）。
 ### 下一篇
 
-重复 Phase 0-7 执行当日第二篇。任一篇未完成 → 停止当天流程，修复后重试。
+重复 Phase 0-7 执行当日第二篇。任一篇未完成 → 停止当天流程，修复后重试。第二篇完成后 Phase 7 step 7 自动执行技能修复。
 
 ## 启动恢复
 
@@ -274,3 +278,49 @@ python ../tools/run_skill.py --post-check toutiao-article --task-id <id>
 - `next_topic`: 下一篇将解决的问题
 
 结尾允许自然的开放问题或下一篇预告。**禁止**：求点赞/求关注/求转发/"评论区说说"/"关注我"/人工诱导互动。
+
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
+
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
+
+
+### 复盘（每次执行后必须跑，无例外）
+
+```bash
+# 第1步：检查 state.json 状态为 idle
+python -c "import json; s=json.load(open('runtime/state.json')); assert s.get('phase')=='idle', f'state not idle: {s[\"phase\"]}'" && echo "✅ state idle" || echo "⚠️ state not idle"
+# 第2步：检查无残留浏览器任务
+ls runtime/_browser_task.json 2>/dev/null && echo "⚠️ _browser_task.json 残留" || echo "✅ 无残留 browser task"
+# 第3步：检查无脏编辑器内容
+ls runtime/_article_context.json 2>/dev/null && echo "⚠️ _article_context.json 残留" || echo "✅ 无残留 article context"
+# 第4步：检查图片临时目录已清理
+ls runtime/images/ 2>/dev/null && echo "⚠️ images 目录残留" || echo "✅ images 已清理"
+# 第5步：验证管线配置与选择器自洽
+python -c "
+import yaml
+with open('config/selectors.yaml', encoding='utf-8') as f:
+    sel = yaml.safe_load(f)
+for section in ['editor','switches','location','cover','schedule','buttons','verify','pages']:
+    assert section in sel, f'missing section: {section}'
+print('✅ selectors.yaml 完整')
+"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
+```

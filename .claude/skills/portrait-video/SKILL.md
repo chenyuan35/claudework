@@ -316,6 +316,8 @@ subprocess.run([
 
 ## Phase 6：复盘（强制！每轮必须执行）
 
+按 CLAUDE.md 技能修复标准流程执行
+
 ### Retro Block
 
 | 字段 | 填写 |
@@ -328,6 +330,17 @@ subprocess.run([
 | 动画评分 | ★★★☆☆ |
 | 用户反馈 | [用户原话] |
 | MP4 路径 | agent_v8.mp4 / ❌ 未生成 |
+
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
 
 ### 复盘三问
 
@@ -431,3 +444,17 @@ Step 5: # 如果帧数太少 → 重来（检查 server 是否存活）
 - [ ] **PoseLandmarker 动态姿态**：MediaPipe → 姿态序列驱动角色变化
 - [ ] **BGM 自动配乐**：复用抖音卡点或本地 ffmpeg 混音
 - [ ] **多角色同框**：2+ 角色互动动画
+
+### 复盘（每次执行后必须跑，无例外）
+
+```bash
+# 第1步：检查坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
+```

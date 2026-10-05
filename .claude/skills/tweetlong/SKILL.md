@@ -18,6 +18,8 @@ description: "发布 1 篇 X Articles 长文章到 @Eveacry（独立于短推文
    - 待发布标题关键词与 titles[] 中某元素高度重叠（同一事件/同一模型名/同一主题）→ **熔断**
 4. 熔断后终止流程，不写任何新内容
 
+
+🔴 完成后：必须执行下方「复盘」流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）。
 ### 铁律
 - 每次启动技能必须先执行此事。不做就去写内容 = 流程违规。
 - 不依赖记忆或历史记录——必须实时从页面提取。
@@ -362,6 +364,29 @@ Articles 的"编辑"= **取消发布 → 改 → 重新发布**。编辑后原�
 
 连续 2 篇同骨架或同开头 → 本篇必须换。
 
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
+
+### 🔴 强制复盘（上一步通过后必须执行）
+
+**动作序列：**
+1. 执行下方「复盘」章节的 6 步修复标准流程（定位根因→修复→量纲检查→分支检查门→验证→异常表）
+2. 产出唯一是 diff，不建新章节新文件
+
+**无堵塞** → 输出「无修改（本次执行无堵塞）」后结束。
+**有堵塞** → 当场修 SKILL.md，不留待下次。
+
+---
+
+
 ## 复盘与回写（2026-07-17 升级为检查清单）
 
 每完成一次发布，记录到运营记忆（`twitter_account_management.md`）：
@@ -381,3 +406,17 @@ Articles 的"编辑"= **取消发布 → 改 → 重新发布**。编辑后原�
 - 2026-06-30: 修正入口路径（/edit/new 不直接打开编辑器）; 修正 word counter 认知（实测中文显示极低）; 补充封面上传后 Apply 确认步骤; 新增"写前学习头部账号排版/字数/风格"步骤
 - 2026-07-01: 封面图上传流程重写：弃用 setInputFiles（被 X.com React 屏蔽），改用 page.request.get() + base64 + page.evaluate DataTransfer 注入方式，无需点击 Add photos 按钮防文件选择器阻塞
 - 2026-07-02: 封面图上传流程从 nativeInputValueSetter 精确为 React __reactProps.onChange 完整可执行脚本；contenteditable 正文粘贴方式从分批粘贴改为一次性 Ctrl+A → Delete → 全部（clipboard）解决定位不准问题；更新点击 Publish 位置为 browser_run_code_unsafe 优先（browser_click CSS 选择器解析失败）
+
+### 复盘（每次执行后必须跑，无例外）
+
+```bash
+# 第1步：检查坐标表中每个命令在当前环境是否可执行
+# 第2步：扫描残留文件
+ls _csdn_*.js _csdn_*_loader.js _csdn_b64*.js 2>/dev/null && echo "⚠️ 残留文件未清理" || echo "✅ 无残留"
+# 第3步：检查中文验收步骤是否在注入后位置
+# 第4步：确认所有 base64 解码使用 TextDecoder，无裸 atob
+grep -n "atob" SKILL.md | grep -v "TextDecoder" && echo "⚠️ 裸 atob 存在" || echo "✅ 无裸 atob"
+# 第5步：确认无 HTTP server fetch 残留
+grep -q "fetch.*localhost" SKILL.md && echo "⚠️ HTTP fetch 残留" || echo "✅ 无 HTTP fetch"
+# 复盘唯一产出是 diff，不产复盘章节/文件/日志
+```
